@@ -41,6 +41,7 @@
                                 type="checkbox"
                                 name="incoming_payment_enabled"
                                 data-payment-type="incoming_payment"
+                                disabled
                             >
                             <span class="check__box"></span>
                             <span class="check__text">Включить привязку к документу</span>
@@ -56,6 +57,7 @@
                                 type="checkbox"
                                 name="incoming_order_enabled"
                                 data-payment-type="incoming_order"
+                                disabled
                             >
                             <span class="check__box"></span>
                             <span class="check__text">Включить привязку к документу</span>
@@ -71,6 +73,7 @@
                                 type="checkbox"
                                 name="outgoing_payment_enabled"
                                 data-payment-type="outgoing_payment"
+                                disabled
                             >
                             <span class="check__box"></span>
                             <span class="check__text">Включить привязку к документу</span>
@@ -86,6 +89,7 @@
                                 type="checkbox"
                                 name="outgoing_order_enabled"
                                 data-payment-type="outgoing_order"
+                                disabled
                             >
                             <span class="check__box"></span>
                             <span class="check__text">Включить привязку к документу</span>
@@ -102,10 +106,49 @@
     document.addEventListener("DOMContentLoaded", function () {
         const checkboxes = document.querySelectorAll(".js-auto-link-toggle");
 
+        // Загрузить текущее состояние вебхуков при загрузке страницы
+        function loadWebhookStatus() {
+            console.log("Загрузка статуса вебхуков...");
+            
+            fetch("/api/hooks/webhooks/status")
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log("Текущий статус вебхуков:", data.webhooks);
+                    
+                    // Устанавливаем состояние чекбоксов
+                    checkboxes.forEach((checkbox) => {
+                        const paymentType = checkbox.dataset.paymentType;
+                        const isEnabled = data.webhooks[paymentType] || false;
+                        checkbox.checked = isEnabled;
+                        checkbox.disabled = false; // Разблокируем после загрузки
+                        
+                        console.log(`${paymentType}: ${isEnabled ? 'включен' : 'выключен'}`);
+                    });
+                })
+                .catch(error => {
+                    console.error("Ошибка при загрузке статуса вебхуков:", error);
+                    // Разблокируем чекбоксы даже при ошибке
+                    checkboxes.forEach((checkbox) => {
+                        checkbox.disabled = false;
+                    });
+                });
+        }
+
+        // Обработчик изменения чекбоксов
         checkboxes.forEach((checkbox) => {
             checkbox.addEventListener("change", function () {
                 const paymentType = this.dataset.paymentType;
                 const enabled = this.checked;
+
+                console.log(`Переключение ${paymentType}: ${enabled}`);
+
+                // Блокируем чекбокс на время запроса
+                this.disabled = true;
 
                 fetch("/api/hooks/auto-link-toggle", {
                     method: "POST",
@@ -117,15 +160,36 @@
                         enabled: enabled
                     })
                 })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     console.log("Ответ сервера:", data);
+                    
+                    if (data.status === "warning") {
+                        // Если операция не выполнена, возвращаем чекбокс в исходное состояние
+                        this.checked = !enabled;
+                        alert(data.message || data.reason);
+                    }
+                    
+                    // Разблокируем чекбокс
+                    this.disabled = false;
                 })
                 .catch(error => {
                     console.error("Ошибка при отправке:", error);
+                    // В случае ошибки возвращаем чекбокс в исходное состояние
+                    this.checked = !enabled;
+                    this.disabled = false;
+                    alert("Ошибка связи с сервером");
                 });
             });
         });
+
+        // Загружаем статус при загрузке страницы
+        loadWebhookStatus();
     });
 </script>
 {% endblock %}
