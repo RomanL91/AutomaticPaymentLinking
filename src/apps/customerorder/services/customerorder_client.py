@@ -1,0 +1,234 @@
+"""Клиент для работы с API заказов покупателя МойСклад."""
+
+import logging
+from typing import Any, Dict, List, Optional
+
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from ...ms_auth.services.auth_service import MySkladAuthService
+from ..exceptions import CustomerOrderAPIError
+
+logger = logging.getLogger(__name__)
+
+
+class CustomerOrderClient:
+    """
+    Клиент для работы с API заказов покупателя МойСклад.
+    """
+    
+    def __init__(self, auth_service: MySkladAuthService) -> None:
+        """
+        Инициализировать клиент.
+        
+        Args:
+            auth_service: Сервис аутентификации
+        """
+        self._auth_service = auth_service
+        self._timeout = 30.0
+    
+    def _get_base_url(self) -> str:
+        """
+        Получить базовый URL API.
+        
+        Returns:
+            Базовый URL
+            
+        Raises:
+            CustomerOrderAPIError: Если credentials не настроены
+        """
+        creds = self._auth_service.get_raw_credentials()
+        if not creds:
+            raise CustomerOrderAPIError("МойСклад credentials не настроены")
+        return str(creds.base_url).rstrip("/")
+    
+    def _get_headers(self) -> Dict[str, str]:
+        """
+        Получить заголовки для запросов.
+        
+        Returns:
+            Словарь заголовков
+            
+        Raises:
+            CustomerOrderAPIError: Если не удается построить заголовок авторизации
+        """
+        auth_header = self._auth_service.get_basic_auth_header()
+        if not auth_header:
+            raise CustomerOrderAPIError("Невозможно построить Authorization header")
+        
+        return {
+            **auth_header,
+            "Content-Type": "application/json",
+            "Accept-Encoding": "gzip",
+        }
+    
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    async def get_by_id(self, order_id: str, expand: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Получить заказ покупателя по ID.
+        
+        Args:
+            order_id: ID заказа в МойСклад
+            expand: Дополнительные поля для раскрытия
+            
+        Returns:
+            Данные заказа
+            
+        Raises:
+            CustomerOrderAPIError: При ошибке запроса
+        """
+        try:
+            base_url = self._get_base_url()
+            headers = self._get_headers()
+            
+            params = {}
+            if expand:
+                params["expand"] = expand
+            
+            async with httpx.AsyncClient(headers=headers, timeout=self._timeout) as client:
+                url = f"{base_url}/entity/customerorder/{order_id}"
+                logger.debug("Запрос заказа покупателя: %s", order_id)
+                
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                logger.debug("Получен заказ: %s", data.get("name"))
+                return data
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise CustomerOrderAPIError(
+                    f"Заказ {order_id} не найден",
+                    details={"order_id": order_id}
+                ) from exc
+            raise CustomerOrderAPIError(
+                "Ошибка HTTP при получении заказа",
+                details={"status_code": exc.response.status_code, "error": str(exc)},
+            ) from exc
+        except Exception as exc:
+            raise CustomerOrderAPIError(
+                "Ошибка при получении заказа",
+                details={"error": str(exc)},
+            ) from exc
+    
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    async def search(
+        self,
+        filter_str: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+        order: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Поиск заказов покупателя по фильтру.
+        
+        Args:
+            filter_str: Строка фильтра МойСклад
+            limit: Максимальное количество записей
+            offset: Смещение
+            order: Поле для сортировки
+            
+        Returns:
+            Список заказов
+            
+        Raises:
+            CustomerOrderAPIError: При ошибке запроса
+        """
+        try:
+            base_url = self._get_base_url()
+            headers = self._get_headers()
+            
+            params = {
+                "limit": min(limit, 1000),
+                "offset": offset,
+            }
+            
+            if filter_str:
+                params["filter"] = filter_str
+            
+            if order:
+                params["order"] = order
+            
+            async with httpx.AsyncClient(headers=headers, timeout=self._timeout) as client:
+                url = f"{base_url}/entity/customerorder"
+                logger.debug("Поиск заказов с фильтром: %s", filter_str)
+                
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                rows = data.get("rows", [])
+                logger.debug("Найдено заказов: %d", len(rows))
+                return rows
+        except httpx.HTTPStatusError as exc:
+            raise CustomerOrderAPIError(
+                "Ошибка HTTP при поиске заказов",
+                details={"status_code": exc.response.status_code, "error": str(exc)},
+            ) from exc
+        except Exception as exc:
+            raise CustomerOrderAPIError(
+                "Ошибка при поиске заказов",
+                details={"error": str(exc)},
+            ) from exc
+    
+    async def search_by_agent_and_sum(
+        self,
+        agent_id: str,
+        sum_value: float,
+        tolerance: float = 0.01,
+    ) -> List[Dict[str, Any]]:
+        """
+        Поиск заказов по контрагенту и сумме.
+        
+        Args:
+            agent_id: ID контрагента
+            sum_value: Сумма для поиска
+            tolerance: Допустимая погрешность суммы
+            
+        Returns:
+            Список заказов
+        """
+        sum_min = sum_value - tolerance
+        sum_max = sum_value + tolerance
+        
+        filter_parts = [
+            f"agent=https://api.moysklad.ru/api/remap/1.2/entity/counterparty/{agent_id}",
+            f"sum>={sum_min}",
+            f"sum<={sum_max}",
+        ]
+        
+        filter_str = ";".join(filter_parts)
+        return await self.search(filter_str=filter_str, order="moment,desc")
+    
+    async def search_by_agent(
+        self,
+        agent_id: str,
+        only_unpaid: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Поиск заказов по контрагенту.
+        
+        Args:
+            agent_id: ID контрагента
+            only_unpaid: Искать только неоплаченные
+            
+        Returns:
+            Список заказов
+        """
+        filter_parts = [
+            f"agent=https://api.moysklad.ru/api/remap/1.2/entity/counterparty/{agent_id}",
+        ]
+        
+        if only_unpaid:
+            filter_parts.append("payedSum<sum")
+        
+        filter_str = ";".join(filter_parts)
+        return await self.search(filter_str=filter_str, order="moment,asc")

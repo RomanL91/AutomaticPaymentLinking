@@ -1,0 +1,118 @@
+"""Сервис для работы с заказами покупателя."""
+
+import logging
+from typing import List, Optional
+
+from ...ms_auth.services.auth_service import MySkladAuthService
+from ..domain.entities import CustomerOrderEntity
+from ..domain.value_objects import CustomerOrderFilter
+from .customerorder_client import CustomerOrderClient
+
+logger = logging.getLogger(__name__)
+
+
+class CustomerOrderService:
+    """
+    Сервис для работы с заказами покупателя.
+    
+    Реализует бизнес-логику поиска и работы с заказами.
+    """
+    
+    def __init__(self, auth_service: MySkladAuthService) -> None:
+        """
+        Инициализировать сервис.
+        
+        Args:
+            auth_service: Сервис аутентификации
+        """
+        self._auth_service = auth_service
+        self._client = CustomerOrderClient(auth_service)
+    
+    async def get_by_id(self, order_id: str) -> CustomerOrderEntity:
+        """
+        Получить заказ по ID.
+        
+        Args:
+            order_id: ID заказа
+            
+        Returns:
+            Доменная сущность заказа
+        """
+        data = await self._client.get_by_id(order_id)
+        return self._to_entity(data)
+    
+    async def find_for_payment(
+        self,
+        agent_id: str,
+        payment_sum: float,
+        search_by_sum: bool = True,
+    ) -> List[CustomerOrderEntity]:
+        """
+        Найти заказы для привязки платежа.
+        
+        Args:
+            agent_id: ID контрагента
+            payment_sum: Сумма платежа
+            search_by_sum: Искать по точной сумме
+            
+        Returns:
+            Список подходящих заказов
+        """
+        if search_by_sum:
+            orders_data = await self._client.search_by_agent_and_sum(
+                agent_id=agent_id,
+                sum_value=payment_sum,
+            )
+        else:
+            orders_data = await self._client.search_by_agent(
+                agent_id=agent_id,
+                only_unpaid=True,
+            )
+        
+        entities = [self._to_entity(data) for data in orders_data]
+        
+        entities = [e for e in entities if not e.is_fully_paid()]
+        
+        logger.info(
+            "Найдено заказов для привязки: %d (agent=%s, sum=%s, by_sum=%s)",
+            len(entities),
+            agent_id,
+            payment_sum,
+            search_by_sum,
+        )
+        
+        return entities
+    
+    @staticmethod
+    def _to_entity(data: dict) -> CustomerOrderEntity:
+        """
+        Преобразовать данные API в доменную сущность.
+        
+        Args:
+            data: Данные от API
+            
+        Returns:
+            Доменная сущность
+        """
+        agent_meta = data.get("agent", {}).get("meta", {})
+        agent_href = agent_meta.get("href", "")
+        agent_id = agent_href.split("/")[-1] if agent_href else ""
+        
+        org_meta = data.get("organization", {}).get("meta", {})
+        org_href = org_meta.get("href", "")
+        org_id = org_href.split("/")[-1] if org_href else ""
+        
+        return CustomerOrderEntity(
+            id=data["id"],
+            account_id=data["accountId"],
+            name=data["name"],
+            moment=data["moment"],
+            applicable=data["applicable"],
+            sum=data["sum"],
+            payed_sum=data.get("payedSum", 0),
+            shipped_sum=data.get("shippedSum", 0),
+            invoiced_sum=data.get("invoicedSum", 0),
+            agent_id=agent_id,
+            organization_id=org_id,
+            meta_href=data["meta"]["href"],
+        )
