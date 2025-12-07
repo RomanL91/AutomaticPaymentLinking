@@ -12,17 +12,39 @@ class PaymentType(str, Enum):
     outgoing_order = "outgoing_order"       # Расходный ордер
 
 
+class DocumentType(str, Enum):
+    customerorder = "customerorder"  # Заказ покупателя
+    invoiceout = "invoiceout"        # Счет покупателя
+    demand = "demand"                # Отгрузка
+
+
+class LinkType(str, Enum):
+    sum_and_counterparty = "sum_and_counterparty"          # По сумме и контрагенту
+    counterparty = "counterparty"                          # По контрагенту
+    payment_purpose_mask = "payment_purpose_mask"          # По маске назначения платежа
+
+
 class AutoLinkTogglePayload(BaseModel):
     payment_type: PaymentType
     enabled: bool
+    document_type: Optional[DocumentType] = DocumentType.customerorder
+    link_type: Optional[LinkType] = LinkType.sum_and_counterparty
+
+
+class UpdateLinkSettingsPayload(BaseModel):
+    payment_type: PaymentType
+    document_type: DocumentType
+    link_type: LinkType
+
+
+class WebhookStatusItem(BaseModel):
+    enabled: bool
+    document_type: DocumentType
+    link_type: LinkType
 
 
 class WebhookStatusResponse(BaseModel):
-    """
-    Ответ с текущим статусом вебхуков.
-    Ключи - payment_type, значения - enabled/disabled.
-    """
-    webhooks: Dict[str, bool]
+    webhooks: Dict[str, WebhookStatusItem]
 
 
 # ===== Схемы для входящих вебхуков МойСклад =====

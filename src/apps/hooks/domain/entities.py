@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from ..schemas import PaymentType
+from ..schemas import DocumentType, LinkType, PaymentType
 
 
 @dataclass
@@ -17,6 +17,8 @@ class WebhookEntity:
     url: str
     ms_webhook_id: str
     enabled: bool
+    document_type: DocumentType = DocumentType.customerorder
+    link_type: LinkType = LinkType.sum_and_counterparty
     id: Optional[int] = None
     ms_href: Optional[str] = None
     ms_account_id: Optional[str] = None

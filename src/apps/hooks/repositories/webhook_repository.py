@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..domain.entities import WebhookEntity
 from ..exceptions import RepositoryError
 from ..models import WebhookSubscription
-from ..schemas import PaymentType
+from ..schemas import DocumentType, LinkType, PaymentType
 from .base import AbstractRepository
 
 
@@ -89,6 +89,40 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
         
         return self._to_entity(model) if model else None
     
+    async def update_link_settings(
+        self,
+        payment_type: PaymentType,
+        document_type: DocumentType,
+        link_type: LinkType,
+    ) -> Optional[WebhookEntity]:
+        """
+        Обновить настройки привязки для существующего вебхука.
+        
+        Args:
+            payment_type: Тип платежа
+            document_type: Тип документа
+            link_type: Тип привязки
+            
+        Returns:
+            Обновленная сущность или None если вебхук не найден
+        """
+        stmt = select(WebhookSubscription).where(
+            WebhookSubscription.payment_type == payment_type
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        
+        if not model:
+            return None
+        
+        model.document_type = document_type
+        model.link_type = link_type
+        
+        await self._session.flush()
+        await self._session.refresh(model)
+        
+        return self._to_entity(model)
+    
     async def get_status_dict(self) -> Dict[str, bool]:
         """
         Получить словарь статусов всех вебхуков.
@@ -98,6 +132,40 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
         """
         webhooks = await self.get_all()
         return {webhook.payment_type.value: webhook.enabled for webhook in webhooks}
+    
+    async def get_full_status_dict(self) -> Dict[str, Dict[str, str]]:
+        """
+        Получить полный словарь статусов всех вебхуков с настройками.
+        
+        Returns:
+            Словарь {payment_type: {enabled, document_type, link_type}}
+        """
+        webhooks = await self.get_all()
+        result = {}
+        
+        for webhook in webhooks:
+            result[webhook.payment_type.value] = {
+                "enabled": webhook.enabled,
+                "document_type": webhook.document_type.value,
+                "link_type": webhook.link_type.value,
+            }
+        
+        all_payment_types = [
+            PaymentType.incoming_payment,
+            PaymentType.incoming_order,
+            PaymentType.outgoing_payment,
+            PaymentType.outgoing_order,
+        ]
+        
+        for pt in all_payment_types:
+            if pt.value not in result:
+                result[pt.value] = {
+                    "enabled": False,
+                    "document_type": DocumentType.customerorder.value,
+                    "link_type": LinkType.sum_and_counterparty.value,
+                }
+        
+        return result
     
     async def add(self, entity: WebhookEntity) -> WebhookEntity:
         """
@@ -156,6 +224,8 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             model.ms_href = entity.ms_href
             model.ms_account_id = entity.ms_account_id
             model.enabled = entity.enabled
+            model.document_type = entity.document_type
+            model.link_type = entity.link_type
             
             await self._session.flush()
             await self._session.refresh(model)
@@ -231,6 +301,8 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             ms_href=model.ms_href,
             ms_account_id=model.ms_account_id,
             enabled=model.enabled,
+            document_type=model.document_type,
+            link_type=model.link_type,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -256,4 +328,6 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             ms_href=entity.ms_href,
             ms_account_id=entity.ms_account_id,
             enabled=entity.enabled,
+            document_type=entity.document_type,
+            link_type=entity.link_type,
         )

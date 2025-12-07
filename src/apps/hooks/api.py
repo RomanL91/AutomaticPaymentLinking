@@ -6,6 +6,7 @@ from .dependencies import WebhookSvcDep
 from .schemas import (
     AutoLinkTogglePayload,
     MySkladWebhookPayload,
+    UpdateLinkSettingsPayload,
     WebhookStatusResponse,
 )
 
@@ -20,17 +21,42 @@ async def get_webhooks_status(service: WebhookSvcDep):
     return WebhookStatusResponse(webhooks=status_dict)
 
 
+@router.post("/update-link-settings")
+async def update_link_settings(
+    payload: UpdateLinkSettingsPayload,
+    service: WebhookSvcDep,
+):
+    logger.info(
+        "Обновление настроек привязки: payment_type=%s, document_type=%s, link_type=%s",
+        payload.payment_type,
+        payload.document_type,
+        payload.link_type,
+    )
+    
+    result = await service.update_link_settings(
+        payment_type=payload.payment_type,
+        document_type=payload.document_type,
+        link_type=payload.link_type,
+    )
+    
+    return result
+
+
 @router.post("/auto-link-toggle")
 async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookSvcDep):
     logger.info(
-        "UI toggle: payment_type=%s, enabled=%s",
+        "UI toggle: payment_type=%s, enabled=%s, document_type=%s, link_type=%s",
         payload.payment_type,
         payload.enabled,
+        payload.document_type,
+        payload.link_type,
     )
 
     result = await service.toggle_webhook(
         payment_type=payload.payment_type,
         enabled=payload.enabled,
+        document_type=payload.document_type,
+        link_type=payload.link_type,
     )
    
     if result.is_skipped():

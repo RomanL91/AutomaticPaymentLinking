@@ -1,0 +1,81 @@
+<div class="link-settings" style="margin-top: 24px; padding: 16px; background: #f8f9fa; border-radius: 4px;">
+    <div class="h3" style="margin-bottom: 12px;">
+        Настройки привязки
+    </div>
+
+    <div style="margin-bottom: 16px;">
+        <div class="caption" style="margin-bottom: 8px;">Тип документа:</div>
+        <label class="radio option">
+            <input
+                class="radio__input js-document-type"
+                type="radio"
+                name="document_type_{{ payment_type }}"
+                value="customerorder"
+                data-payment-type="{{ payment_type }}"
+                checked
+            >
+            <span class="radio__box"></span>
+            <span class="radio__text">Заказ покупателя</span>
+        </label>
+        <label class="radio option">
+            <input
+                class="radio__input js-document-type"
+                type="radio"
+                name="document_type_{{ payment_type }}"
+                value="invoiceout"
+                data-payment-type="{{ payment_type }}"
+            >
+            <span class="radio__box"></span>
+            <span class="radio__text">Счет покупателя</span>
+        </label>
+        <label class="radio option">
+            <input
+                class="radio__input js-document-type"
+                type="radio"
+                name="document_type_{{ payment_type }}"
+                value="demand"
+                data-payment-type="{{ payment_type }}"
+            >
+            <span class="radio__box"></span>
+            <span class="radio__text">Отгрузка</span>
+        </label>
+    </div>
+
+    <div>
+        <div class="caption" style="margin-bottom: 8px;">Тип привязки:</div>
+        <label class="radio option">
+            <input
+                class="radio__input js-link-type"
+                type="radio"
+                name="link_type_{{ payment_type }}"
+                value="sum_and_counterparty"
+                data-payment-type="{{ payment_type }}"
+                checked
+            >
+            <span class="radio__box"></span>
+            <span class="radio__text">По сумме и контрагенту</span>
+        </label>
+        <label class="radio option">
+            <input
+                class="radio__input js-link-type"
+                type="radio"
+                name="link_type_{{ payment_type }}"
+                value="counterparty"
+                data-payment-type="{{ payment_type }}"
+            >
+            <span class="radio__box"></span>
+            <span class="radio__text">По контрагенту</span>
+        </label>
+        <label class="radio option">
+            <input
+                class="radio__input js-link-type"
+                type="radio"
+                name="link_type_{{ payment_type }}"
+                value="payment_purpose_mask"
+                data-payment-type="{{ payment_type }}"
+            >
+            <span class="radio__box"></span>
+            <span class="radio__text">По маске назначения платежа</span>
+        </label>
+    </div>
+</div>

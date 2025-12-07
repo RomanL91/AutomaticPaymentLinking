@@ -33,7 +33,8 @@
             </ul>
 
             <div class="tabs-border__items">
-                <div class="tabs-border__item js-tabs-item b-active">
+                <!-- Входящий платеж -->
+                <div class="tabs-border__item js-tabs-item b-active" data-payment-type="incoming_payment">
                     <div style="margin-top: 16px;">
                         <label class="check option">
                             <input
@@ -47,9 +48,12 @@
                             <span class="check__text">Включить привязку к документу</span>
                         </label>
                     </div>
+                    {% set payment_type = "incoming_payment" %}
+                    {% include "partials/link_settings.html" %}
                 </div>
 
-                <div class="tabs-border__item js-tabs-item">
+                <!-- Приходный ордер -->
+                <div class="tabs-border__item js-tabs-item" data-payment-type="incoming_order">
                     <div style="margin-top: 16px;">
                         <label class="check option">
                             <input
@@ -63,9 +67,12 @@
                             <span class="check__text">Включить привязку к документу</span>
                         </label>
                     </div>
+                    {% set payment_type = "incoming_order" %}
+                    {% include "partials/link_settings.html" %}
                 </div>
 
-                <div class="tabs-border__item js-tabs-item">
+                <!-- Исходящий платеж -->
+                <div class="tabs-border__item js-tabs-item" data-payment-type="outgoing_payment">
                     <div style="margin-top: 16px;">
                         <label class="check option">
                             <input
@@ -79,9 +86,12 @@
                             <span class="check__text">Включить привязку к документу</span>
                         </label>
                     </div>
+                    {% set payment_type = "outgoing_payment" %}
+                    {% include "partials/link_settings.html" %}
                 </div>
 
-                <div class="tabs-border__item js-tabs-item">
+                <!-- Расходный ордер -->
+                <div class="tabs-border__item js-tabs-item" data-payment-type="outgoing_order">
                     <div style="margin-top: 16px;">
                         <label class="check option">
                             <input
@@ -95,6 +105,8 @@
                             <span class="check__text">Включить привязку к документу</span>
                         </label>
                     </div>
+                    {% set payment_type = "outgoing_order" %}
+                    {% include "partials/link_settings.html" %}
                 </div>
             </div>
         </div>
@@ -105,8 +117,60 @@
 <script>
     document.addEventListener("DOMContentLoaded", function () {
         const checkboxes = document.querySelectorAll(".js-auto-link-toggle");
+        
+        const debounceTimers = {};
+        const processingFlags = {};
 
-        // Загрузить текущее состояние вебхуков при загрузке страницы
+        function debounce(func, delay, key) {
+            return function(...args) {
+                if (debounceTimers[key]) {
+                    clearTimeout(debounceTimers[key]);
+                }
+                
+                debounceTimers[key] = setTimeout(() => {
+                    func.apply(this, args);
+                    delete debounceTimers[key];
+                }, delay);
+            };
+        }
+
+        function setTabControlsDisabled(paymentType, disabled) {
+            const tab = document.querySelector(`.js-tabs-item[data-payment-type="${paymentType}"]`);
+            if (!tab) return;
+
+            const documentRadios = tab.querySelectorAll('.js-document-type');
+            const linkRadios = tab.querySelectorAll('.js-link-type');
+            const checkbox = tab.querySelector('.js-auto-link-toggle');
+
+            documentRadios.forEach(radio => radio.disabled = disabled);
+            linkRadios.forEach(radio => radio.disabled = disabled);
+            if (checkbox) checkbox.disabled = disabled;
+        }
+
+        function getTabSettings(paymentType) {
+            const tab = document.querySelector(`.js-tabs-item[data-payment-type="${paymentType}"]`);
+            if (!tab) return null;
+
+            const documentTypeRadio = tab.querySelector('.js-document-type:checked');
+            const linkTypeRadio = tab.querySelector('.js-link-type:checked');
+
+            return {
+                document_type: documentTypeRadio ? documentTypeRadio.value : 'customerorder',
+                link_type: linkTypeRadio ? linkTypeRadio.value : 'sum_and_counterparty'
+            };
+        }
+
+        function setTabSettings(paymentType, documentType, linkType) {
+            const tab = document.querySelector(`.js-tabs-item[data-payment-type="${paymentType}"]`);
+            if (!tab) return;
+
+            const documentRadio = tab.querySelector(`.js-document-type[value="${documentType}"]`);
+            if (documentRadio) documentRadio.checked = true;
+
+            const linkRadio = tab.querySelector(`.js-link-type[value="${linkType}"]`);
+            if (linkRadio) linkRadio.checked = true;
+        }
+
         function loadWebhookStatus() {
             console.log("Загрузка статуса вебхуков...");
             
@@ -120,76 +184,175 @@
                 .then(data => {
                     console.log("Текущий статус вебхуков:", data.webhooks);
                     
-                    // Устанавливаем состояние чекбоксов
                     checkboxes.forEach((checkbox) => {
                         const paymentType = checkbox.dataset.paymentType;
-                        const isEnabled = data.webhooks[paymentType] || false;
-                        checkbox.checked = isEnabled;
-                        checkbox.disabled = false; // Разблокируем после загрузки
+                        const webhookData = data.webhooks[paymentType];
                         
-                        console.log(`${paymentType}: ${isEnabled ? 'включен' : 'выключен'}`);
+                        if (webhookData) {
+                            checkbox.checked = webhookData.enabled;
+                            
+                            setTabSettings(
+                                paymentType,
+                                webhookData.document_type,
+                                webhookData.link_type
+                            );
+                            
+                            console.log(`${paymentType}: enabled=${webhookData.enabled}, document_type=${webhookData.document_type}, link_type=${webhookData.link_type}`);
+                        }
+                        
+                        checkbox.disabled = false;
                     });
                 })
                 .catch(error => {
                     console.error("Ошибка при загрузке статуса вебхуков:", error);
-                    // Разблокируем чекбоксы даже при ошибке
                     checkboxes.forEach((checkbox) => {
                         checkbox.disabled = false;
                     });
                 });
         }
 
-        // Обработчик изменения чекбоксов
+        function updateLinkSettings(paymentType) {
+            const settings = getTabSettings(paymentType);
+            
+            if (processingFlags[paymentType]) {
+                console.log(`Запрос для ${paymentType} уже обрабатывается, пропускаем`);
+                return;
+            }
+
+            console.log(`Обновление настроек ${paymentType}:`, settings);
+
+            processingFlags[paymentType] = true;
+            setTabControlsDisabled(paymentType, true);
+
+            fetch("/api/hooks/update-link-settings", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    payment_type: paymentType,
+                    document_type: settings.document_type,
+                    link_type: settings.link_type
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Настройки обновлены:", data);
+                
+                if (data.status === "warning") {
+                    alert(data.message);
+                }
+            })
+            .catch(error => {
+                console.error("Ошибка при обновлении настроек:", error);
+                alert("Ошибка при обновлении настроек");
+            })
+            .finally(() => {
+                processingFlags[paymentType] = false;
+                setTabControlsDisabled(paymentType, false);
+            });
+        }
+
+        function toggleWebhook(checkbox) {
+            const paymentType = checkbox.dataset.paymentType;
+            const enabled = checkbox.checked;
+            const settings = getTabSettings(paymentType);
+
+            if (processingFlags[paymentType]) {
+                console.log(`Запрос для ${paymentType} уже обрабатывается, пропускаем`);
+                return;
+            }
+
+            console.log(`Переключение ${paymentType}: ${enabled}`, settings);
+
+            processingFlags[paymentType] = true;
+            setTabControlsDisabled(paymentType, true);
+
+            fetch("/api/hooks/auto-link-toggle", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    payment_type: paymentType,
+                    enabled: enabled,
+                    document_type: settings.document_type,
+                    link_type: settings.link_type
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Ответ сервера:", data);
+                
+                if (data.status === "warning") {
+                    checkbox.checked = !enabled;
+                    alert(data.message || data.reason);
+                }
+            })
+            .catch(error => {
+                console.error("Ошибка при отправке:", error);
+                checkbox.checked = !enabled;
+                alert("Ошибка связи с сервером");
+            })
+            .finally(() => {
+                processingFlags[paymentType] = false;
+                setTabControlsDisabled(paymentType, false);
+            });
+        }
+
         checkboxes.forEach((checkbox) => {
             checkbox.addEventListener("change", function () {
-                const paymentType = this.dataset.paymentType;
-                const enabled = this.checked;
-
-                console.log(`Переключение ${paymentType}: ${enabled}`);
-
-                // Блокируем чекбокс на время запроса
-                this.disabled = true;
-
-                fetch("/api/hooks/auto-link-toggle", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        payment_type: paymentType,
-                        enabled: enabled
-                    })
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log("Ответ сервера:", data);
-                    
-                    if (data.status === "warning") {
-                        // Если операция не выполнена, возвращаем чекбокс в исходное состояние
-                        this.checked = !enabled;
-                        alert(data.message || data.reason);
-                    }
-                    
-                    // Разблокируем чекбокс
-                    this.disabled = false;
-                })
-                .catch(error => {
-                    console.error("Ошибка при отправке:", error);
-                    // В случае ошибки возвращаем чекбокс в исходное состояние
-                    this.checked = !enabled;
-                    this.disabled = false;
-                    alert("Ошибка связи с сервером");
-                });
+                toggleWebhook(this);
             });
         });
 
-        // Загружаем статус при загрузке страницы
+        document.querySelectorAll('.js-document-type, .js-link-type').forEach((radio) => {
+            const paymentType = radio.dataset.paymentType;
+            
+            const debouncedUpdate = debounce(function() {
+                const checkbox = document.querySelector(`.js-auto-link-toggle[data-payment-type="${paymentType}"]`);
+                
+                if (checkbox && checkbox.checked && !processingFlags[paymentType]) {
+                    updateLinkSettings(paymentType);
+                }
+            }, 500, `radio_${paymentType}`);
+            
+            radio.addEventListener("change", debouncedUpdate);
+        });
+
         loadWebhookStatus();
     });
 </script>
+
+<style>
+    .link-settings .radio__input:disabled + .radio__box {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    
+    .link-settings .radio__input:disabled ~ .radio__text {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    
+    .check__input:disabled + .check__box {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    
+    .check__input:disabled ~ .check__text {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+</style>
 {% endblock %}

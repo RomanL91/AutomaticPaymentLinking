@@ -4,7 +4,7 @@ from sqlalchemy import Index, String
 
 from src.core.models import Base
 
-from .schemas import PaymentType
+from .schemas import DocumentType, LinkType, PaymentType
 
 
 class WebhookSubscription(Base):
@@ -24,6 +24,20 @@ class WebhookSubscription(Base):
     ms_account_id = Column(String(64), nullable=True)
 
     enabled = Column(Boolean, nullable=False, default=True, index=True)
+
+    document_type = Column(
+        SAEnum(DocumentType, name="document_type_enum"),
+        nullable=False,
+        default=DocumentType.customerorder,
+        server_default="customerorder",
+    )
+
+    link_type = Column(
+        SAEnum(LinkType, name="link_type_enum"),
+        nullable=False,
+        default=LinkType.sum_and_counterparty,
+        server_default="sum_and_counterparty",
+    )
 
     __table_args__ = (
         Index(
