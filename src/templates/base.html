@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ page_title or "Автоматическая привязка платежей" }}</title>
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0,
+                   maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <!-- Стили как в примере UI KIT -->
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/Selectivity.js/2.1.0/selectivity-full.min.css">
+    <link rel="stylesheet"
+          href="{{ url_for('static', path='ms_uikit/css/uikit.css') }}">
+</head>
+<body>
+
+<div class="page">
+    {% block content %}{% endblock %}
+</div>
+
+<!-- jQuery и Selectivity, как в примере UI KIT -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Selectivity.js/2.1.0/selectivity-full.min.js"></script>
+<script src="{{ url_for('static', path='ms_uikit/js/uikit.js') }}"></script>
+
+</body>
+</html>

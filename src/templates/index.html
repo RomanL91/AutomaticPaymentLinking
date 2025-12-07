@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="ui-kit">
+    <div class="container">
+
+        <!-- Заголовок и подзаголовок -->
+        <div class="h1" style="margin-top: 16px;">
+            Автоматическая привязка платежей
+        </div>
+
+        <div class="h2" style="margin-top: 12px;">
+            Настройка работы:
+        </div>
+
+        <p class="caption" style="margin-top: 4px; max-width: 640px;">
+            После включения, алгоритм при создании платежа будет автоматически искать документ с такой же суммой.
+        </p>
+
+        <!-- Вкладки типа платежа -->
+        <div class="tabs-border js-tabs" style="margin-top: 24px;">
+            <!-- Кнопки вкладок -->
+            <ul class="tabs-border__buttons">
+                <li class="tabs-border__button js-tabs-button b-active">
+                    Входящий платеж
+                </li>
+                <li class="tabs-border__button js-tabs-button">
+                    Приходный ордер
+                </li>
+                <li class="tabs-border__button js-tabs-button">
+                    Исходящий платеж
+                </li>
+                <li class="tabs-border__button js-tabs-button">
+                    Расходный ордер
+                </li>
+            </ul>
+
+            <!-- Контент вкладок -->
+            <div class="tabs-border__items">
+                <!-- Входящий платеж -->
+                <div class="tabs-border__item js-tabs-item b-active">
+                    <div style="margin-top: 16px;">
+                        <label class="check option">
+                            <input
+                                class="check__input js-auto-link-toggle"
+                                type="checkbox"
+                                name="incoming_payment_enabled"
+                                data-payment-type="incoming_payment"
+                            >
+                            <span class="check__box"></span>
+                            <span class="check__text">Включить привязку к документу</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Приходный ордер -->
+                <div class="tabs-border__item js-tabs-item">
+                    <div style="margin-top: 16px;">
+                        <label class="check option">
+                            <input
+                                class="check__input js-auto-link-toggle"
+                                type="checkbox"
+                                name="incoming_order_enabled"
+                                data-payment-type="incoming_order"
+                            >
+                            <span class="check__box"></span>
+                            <span class="check__text">Включить привязку к документу</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Исходящий платеж -->
+                <div class="tabs-border__item js-tabs-item">
+                    <div style="margin-top: 16px;">
+                        <label class="check option">
+                            <input
+                                class="check__input js-auto-link-toggle"
+                                type="checkbox"
+                                name="outgoing_payment_enabled"
+                                data-payment-type="outgoing_payment"
+                            >
+                            <span class="check__box"></span>
+                            <span class="check__text">Включить привязку к документу</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Расходный ордер -->
+                <div class="tabs-border__item js-tabs-item">
+                    <div style="margin-top: 16px;">
+                        <label class="check option">
+                            <input
+                                class="check__input js-auto-link-toggle"
+                                type="checkbox"
+                                name="outgoing_order_enabled"
+                                data-payment-type="outgoing_order"
+                            >
+                            <span class="check__box"></span>
+                            <span class="check__text">Включить привязку к документу</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Простой JS прямо в шаблоне -->
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const checkboxes = document.querySelectorAll(".js-auto-link-toggle");
+
+        checkboxes.forEach((checkbox) => {
+            checkbox.addEventListener("change", function () {
+                const paymentType = this.dataset.paymentType;
+                const enabled = this.checked;
+
+                fetch("/api/hooks/auto-link-toggle", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        payment_type: paymentType,
+                        enabled: enabled
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Server response:", data);
+                })
+                .catch(error => {
+                    console.error("Error while sending toggle:", error);
+                });
+            });
+        });
+    });
+</script>
+{% endblock %}
