@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
 from .schemas import MySkladCredentialsIn, MySkladCredentialsOut
-from .service import MySkladAuthService, get_ms_auth_service
+from .services.auth_service import MySkladAuthService, get_ms_auth_service
 
 router = APIRouter()
 

@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from ...ms_auth.service import MySkladAuthService
+from ...ms_auth.services.auth_service import MySkladAuthService
 from ..exceptions import MoySkladAPIError
 
 logger = logging.getLogger(__name__)

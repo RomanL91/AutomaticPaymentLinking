@@ -1,25 +1,13 @@
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-)
+from sqlalchemy import Boolean, Column
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import (
-    Index,
-    Integer,
-    String,
-)
-from sqlalchemy.sql import func
+from sqlalchemy import Index, String
 
-from src.core.db import Base
+from src.core.models import Base
 
 from .schemas import PaymentType
 
 
 class WebhookSubscription(Base):
-    __tablename__ = "webhook_subscription"
-
-    id = Column(Integer, primary_key=True, index=True)
 
     payment_type = Column(
         SAEnum(PaymentType, name="payment_type_enum"),
@@ -36,18 +24,6 @@ class WebhookSubscription(Base):
     ms_account_id = Column(String(64), nullable=True)
 
     enabled = Column(Boolean, nullable=False, default=True, index=True)
-
-    created_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
 
     __table_args__ = (
         Index(

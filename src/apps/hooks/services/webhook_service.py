@@ -5,7 +5,7 @@ from typing import Dict
 
 from src.core.config import settings
 
-from ...ms_auth.service import MySkladAuthService
+from ...ms_auth.services.auth_service import MySkladAuthService
 from ..domain.entities import WebhookOperationResult
 from ..domain.value_objects import WebhookConfiguration
 from ..exceptions import WebhookConfigurationError

@@ -3,8 +3,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.ms_auth.service import MySkladAuthService, get_ms_auth_service
-from src.core.db import get_session
+from src.apps.ms_auth.services.auth_service import (
+    MySkladAuthService,
+    get_ms_auth_service,
+)
 
 from .schemas import (
     AutoLinkTogglePayload,
