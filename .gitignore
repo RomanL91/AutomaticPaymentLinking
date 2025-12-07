@@ -207,3 +207,10 @@ marimo/_lsp/
 __marimo__/
 
 DEV_*
+*.pyc
+src/core/__pycache__/config.cpython-311.pyc
+src/apps/hooks/__pycache__/service.cpython-311.pyc
+src/apps/hooks/__pycache__/schemas.cpython-311.pyc
+src/apps/hooks/__pycache__/repository.cpython-311.pyc
+src/apps/hooks/__pycache__/models.cpython-311.pyc
+src/apps/hooks/__pycache__/api.cpython-311.pyc

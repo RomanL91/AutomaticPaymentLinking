@@ -5,6 +5,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import (
+    Index,
     Integer,
     String,
 )
@@ -20,19 +21,17 @@ class WebhookSubscription(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # Наш внутренний тип — вкладка (incoming_payment / ...)
     payment_type = Column(
         SAEnum(PaymentType, name="payment_type_enum"),
         nullable=False,
         index=True,
     )
 
-    # Данные из МойСклад
     entity_type = Column(String(255), nullable=False)
     action = Column(String(32), nullable=False)
     url = Column(String(255), nullable=False)
 
-    ms_webhook_id = Column(String(64), unique=True, nullable=False)
+    ms_webhook_id = Column(String(64), unique=True, nullable=False, index=True)
     ms_href = Column(String(512), nullable=True)
     ms_account_id = Column(String(64), nullable=True)
 
@@ -48,4 +47,18 @@ class WebhookSubscription(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_webhook_payment_enabled",
+            "payment_type",
+            "enabled",
+        ),
+        Index(
+            "ix_webhook_entity_action_url",
+            "entity_type",
+            "action",
+            "url",
+        ),
     )

@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -15,6 +15,14 @@ class PaymentType(str, Enum):
 class AutoLinkTogglePayload(BaseModel):
     payment_type: PaymentType
     enabled: bool
+
+
+class WebhookStatusResponse(BaseModel):
+    """
+    Ответ с текущим статусом вебхуков.
+    Ключи - payment_type, значения - enabled/disabled.
+    """
+    webhooks: Dict[str, bool]
 
 
 # ===== Схемы для входящих вебхуков МойСклад =====

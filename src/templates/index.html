@@ -4,7 +4,6 @@
 <div class="ui-kit">
     <div class="container">
 
-        <!-- Заголовок и подзаголовок -->
         <div class="h1" style="margin-top: 16px;">
             Автоматическая привязка платежей
         </div>
@@ -17,9 +16,7 @@
             После включения, алгоритм при создании платежа будет автоматически искать документ с такой же суммой.
         </p>
 
-        <!-- Вкладки типа платежа -->
         <div class="tabs-border js-tabs" style="margin-top: 24px;">
-            <!-- Кнопки вкладок -->
             <ul class="tabs-border__buttons">
                 <li class="tabs-border__button js-tabs-button b-active">
                     Входящий платеж
@@ -35,9 +32,7 @@
                 </li>
             </ul>
 
-            <!-- Контент вкладок -->
             <div class="tabs-border__items">
-                <!-- Входящий платеж -->
                 <div class="tabs-border__item js-tabs-item b-active">
                     <div style="margin-top: 16px;">
                         <label class="check option">
@@ -53,7 +48,6 @@
                     </div>
                 </div>
 
-                <!-- Приходный ордер -->
                 <div class="tabs-border__item js-tabs-item">
                     <div style="margin-top: 16px;">
                         <label class="check option">
@@ -69,7 +63,6 @@
                     </div>
                 </div>
 
-                <!-- Исходящий платеж -->
                 <div class="tabs-border__item js-tabs-item">
                     <div style="margin-top: 16px;">
                         <label class="check option">
@@ -85,7 +78,6 @@
                     </div>
                 </div>
 
-                <!-- Расходный ордер -->
                 <div class="tabs-border__item js-tabs-item">
                     <div style="margin-top: 16px;">
                         <label class="check option">
@@ -106,7 +98,6 @@
     </div>
 </div>
 
-<!-- Простой JS прямо в шаблоне -->
 <script>
     document.addEventListener("DOMContentLoaded", function () {
         const checkboxes = document.querySelectorAll(".js-auto-link-toggle");
@@ -128,10 +119,10 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    console.log("Server response:", data);
+                    console.log("Ответ сервера:", data);
                 })
                 .catch(error => {
-                    console.error("Error while sending toggle:", error);
+                    console.error("Ошибка при отправке:", error);
                 });
             });
         });

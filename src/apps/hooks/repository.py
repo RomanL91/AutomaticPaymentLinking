@@ -5,6 +5,23 @@ from .models import WebhookSubscription
 from .schemas import PaymentType
 
 
+async def get_webhook_status(session: AsyncSession) -> dict[str, bool]:
+    """
+    Получить статус всех вебхуков.
+    Возвращает словарь {payment_type: enabled}.
+    """
+    stmt = select(WebhookSubscription)
+    result = await session.execute(stmt)
+    webhooks = result.scalars().all()
+
+    status_dict = {}
+    for webhook in webhooks:
+        # Используем строковое значение enum
+        status_dict[webhook.payment_type.value] = webhook.enabled
+
+    return status_dict
+
+
 async def upsert_webhook_subscription(
     session: AsyncSession,
     payment_type: PaymentType,

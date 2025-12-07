@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -9,16 +10,19 @@ from fastapi.templating import Jinja2Templates
 from src.apps.hooks.api import router as hooks_router
 from src.apps.ms_auth.api import router as ms_auth_router
 from src.core.db import init_db
+from src.core.logging_config import setup_logging
 
-logging.basicConfig(level=logging.INFO)
+# Создаём папку для логов
+Path("logs").mkdir(exist_ok=True)
+
+# Настраиваем логирование
+setup_logging()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # При старте приложения создаём таблицы (для SQLite ок).
     await init_db()
     yield
-    # При остановке сейчас ничего делать не нужно.
 
 
 app = FastAPI(
@@ -26,10 +30,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Статика
 app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
-# Шаблоны
 templates = Jinja2Templates(directory="src/templates")
 
 
@@ -42,6 +44,5 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", context)
 
 
-# Подключаем роуты приложений
 app.include_router(ms_auth_router, prefix="/api/auth/ms", tags=["ms_auth"])
 app.include_router(hooks_router, prefix="/api/hooks", tags=["hooks"])

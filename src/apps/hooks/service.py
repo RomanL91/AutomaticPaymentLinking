@@ -1,44 +1,33 @@
 import logging
-import os
 from typing import Any, Dict, Optional
 
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.apps.ms_auth.service import MySkladAuthService
+from src.core.config import settings
 
 from .schemas import PaymentType
 
 logger = logging.getLogger(__name__)
 
-# URL, на который МойСклад будет слать вебхуки.
-# На бою это должен быть публичный HTTPS URL твоего сервиса.
-# Пока можно оставить заглушку или прописать через переменную окружения.
-MS_WEBHOOK_URL = os.environ.get(
-    "MS_WEBHOOK_URL",
-    "https://ba69ec82eb9a.ngrok-free.app/api/hooks/moysklad/webhook",  # TODO: заменить на реальный URL
-)
 
-# Маппинг вкладки (типа платежа) -> entityType в вебхуке
-# См. документацию МС: PaymentIn, PaymentOut, CashIn, CashOut.
 PAYMENT_TYPE_TO_ENTITY_TYPE: Dict[PaymentType, str] = {
-    PaymentType.incoming_payment: "paymentin",     # Входящий платеж
-    PaymentType.incoming_order: "cashin",          # Приходный ордер
-    PaymentType.outgoing_payment: "paymentout",    # Исходящий платеж
-    PaymentType.outgoing_order: "cashout",         # Расходный ордер
+    PaymentType.incoming_payment: "paymentin",
+    PaymentType.incoming_order: "cashin",
+    PaymentType.outgoing_payment: "paymentout",
+    PaymentType.outgoing_order: "cashout",
 }
 
-# Какое событие отслеживаем — при создании документа
 WEBHOOK_ACTION = "CREATE"
 
 
-class WebhookService:
-    """
-    Логика работы с вебхуками МойСклад:
-    - поиск вебхука по entityType + action + url;
-    - создание нового;
-    - включение/выключение существующего.
-    """
+class WebhookServiceError(Exception):
+    """Базовое исключение для ошибок сервиса вебхуков"""
+    pass
 
+
+class WebhookService:
     def __init__(self, auth_service: MySkladAuthService) -> None:
         self._auth_service = auth_service
 
@@ -47,35 +36,40 @@ class WebhookService:
         payment_type: PaymentType,
         enabled: bool,
     ) -> Dict[str, Any]:
-        """
-        Основной сценарий:
-        - по типу платежа определяем entityType;
-        - ищем вебхук;
-        - если enabled=True -> создать или включить;
-        - если enabled=False -> выключить (enabled=false).
-        Возвращает словарь с информацией об операции.
-        """
         entity_type = PAYMENT_TYPE_TO_ENTITY_TYPE[payment_type]
 
-        creds = self._auth_service.get_raw_credentials()
-        if creds is None:
+        # Читаем webhook URL из конфига (динамически)
+        webhook_url = settings.ms_webhook_url
+        
+        if not webhook_url:
             logger.warning(
-                "sync_webhook_for_toggle called, but MoySklad credentials are NOT configured"
+                "MS_WEBHOOK_URL не задан. Установите APL_MS_WEBHOOK_URL в .env и перезапустите сервер"
             )
+            return {
+                "operation": "skipped_no_webhook_url",
+                "reason": (
+                    "Webhook URL не настроен. Запустите ngrok (DEV_docs/start_ngrok.ps1) "
+                    "и перезапустите сервер"
+                ),
+            }
+
+        creds = self._auth_service.get_raw_credentials()
+        if not creds:
+            logger.warning("МойСклад credentials не настроены")
             return {
                 "operation": "skipped_no_credentials",
                 "reason": "MoySklad credentials are not configured",
             }
 
         auth_header = self._auth_service.get_basic_auth_header()
-        if auth_header is None:
-            logger.warning("No Authorization header built from credentials")
+        if not auth_header:
+            logger.warning("Невозможно построить Authorization header")
             return {
                 "operation": "skipped_no_credentials",
                 "reason": "Cannot build Basic Auth header",
             }
 
-        base_url = str(creds.base_url).rstrip("/")  # типа https://api.moysklad.ru/api/remap/1.2
+        base_url = str(creds.base_url).rstrip("/")
 
         async with httpx.AsyncClient(
             headers={
@@ -83,7 +77,7 @@ class WebhookService:
                 "Content-Type": "application/json",
                 "Accept-Encoding": "gzip",
             },
-            timeout=10.0,
+            timeout=30.0,
         ) as client:
             try:
                 existing = await self._find_existing_webhook(
@@ -91,94 +85,83 @@ class WebhookService:
                     base_url=base_url,
                     entity_type=entity_type,
                     action=WEBHOOK_ACTION,
-                    url=MS_WEBHOOK_URL,
+                    url=webhook_url,
                 )
-            except httpx.HTTPError as exc:
-                logger.error("Error while fetching webhooks from MoySklad: %s", exc)
-                return {
-                    "operation": "error_fetching",
-                    "error": str(exc),
-                }
+            except Exception as exc:
+                logger.exception("Ошибка при получении списка вебхуков")
+                return {"operation": "error_fetching", "error": str(exc)}
 
             if enabled:
-                if existing is None:
-                    # Создаём новый вебхук
-                    try:
-                        created = await self._create_webhook(
-                            client=client,
-                            base_url=base_url,
-                            entity_type=entity_type,
-                            action=WEBHOOK_ACTION,
-                            url=MS_WEBHOOK_URL,
-                        )
-                    except httpx.HTTPError as exc:
-                        logger.error("Error while creating webhook: %s", exc)
-                        return {
-                            "operation": "error_creating",
-                            "error": str(exc),
-                        }
+                return await self._handle_enable(client, base_url, entity_type, existing, webhook_url)
+            else:
+                return await self._handle_disable(client, existing)
 
-                    return {
-                        "operation": "created_and_enabled",
-                        "webhook": created,
-                    }
-
-                # Уже есть вебхук — просто включаем, если он выключен
-                if existing.get("enabled") is True:
-                    return {
-                        "operation": "already_enabled",
-                        "webhook": existing,
-                    }
-
-                try:
-                    updated = await self._update_webhook_enabled(
-                        client=client,
-                        webhook=existing,
-                        enabled=True,
-                    )
-                except httpx.HTTPError as exc:
-                    logger.error("Error while enabling webhook: %s", exc)
-                    return {
-                        "operation": "error_enabling",
-                        "error": str(exc),
-                    }
-
-                return {
-                    "operation": "enabled",
-                    "webhook": updated,
-                }
-
-            # enabled == False -> нужно выключить вебхук (если есть)
-            if existing is None:
-                return {
-                    "operation": "not_found_to_disable",
-                    "webhook": None,
-                }
-
-            if existing.get("enabled") is False:
-                return {
-                    "operation": "already_disabled",
-                    "webhook": existing,
-                }
-
+    async def _handle_enable(
+        self,
+        client: httpx.AsyncClient,
+        base_url: str,
+        entity_type: str,
+        existing: Optional[Dict[str, Any]],
+        webhook_url: str,
+    ) -> Dict[str, Any]:
+        if not existing:
             try:
-                updated = await self._update_webhook_enabled(
+                created = await self._create_webhook(
                     client=client,
-                    webhook=existing,
-                    enabled=False,
+                    base_url=base_url,
+                    entity_type=entity_type,
+                    action=WEBHOOK_ACTION,
+                    url=webhook_url,
                 )
-            except httpx.HTTPError as exc:
-                logger.error("Error while disabling webhook: %s", exc)
-                return {
-                    "operation": "error_disabling",
-                    "error": str(exc),
-                }
+                logger.info("Создан новый вебхук: %s", created.get("id"))
+                return {"operation": "created_and_enabled", "webhook": created}
+            except Exception as exc:
+                logger.exception("Ошибка при создании вебхука")
+                return {"operation": "error_creating", "error": str(exc)}
 
-            return {
-                "operation": "disabled",
-                "webhook": updated,
-            }
+        if existing.get("enabled") is True:
+            return {"operation": "already_enabled", "webhook": existing}
 
+        try:
+            updated = await self._update_webhook_enabled(
+                client=client,
+                webhook=existing,
+                enabled=True,
+            )
+            logger.info("Вебхук включен: %s", existing.get("id"))
+            return {"operation": "enabled", "webhook": updated}
+        except Exception as exc:
+            logger.exception("Ошибка при включении вебхука")
+            return {"operation": "error_enabling", "error": str(exc)}
+
+    async def _handle_disable(
+        self,
+        client: httpx.AsyncClient,
+        existing: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        if not existing:
+            return {"operation": "not_found_to_disable", "webhook": None}
+
+        if existing.get("enabled") is False:
+            return {"operation": "already_disabled", "webhook": existing}
+
+        try:
+            updated = await self._update_webhook_enabled(
+                client=client,
+                webhook=existing,
+                enabled=False,
+            )
+            logger.info("Вебхук выключен: %s", existing.get("id"))
+            return {"operation": "disabled", "webhook": updated}
+        except Exception as exc:
+            logger.exception("Ошибка при выключении вебхука")
+            return {"operation": "error_disabling", "error": str(exc)}
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
     async def _find_existing_webhook(
         self,
         client: httpx.AsyncClient,
@@ -187,15 +170,14 @@ class WebhookService:
         action: str,
         url: str,
     ) -> Optional[Dict[str, Any]]:
-        """
-        Получаем список вебхуков и ищем тот, который соответствует
-        entityType + action + url.
-        Для MVP достаточно одной страницы (лимит вебхуков обычно небольшой).
-        """
         list_url = f"{base_url}/entity/webhook"
+        logger.debug("Получение списка вебхуков: %s", list_url)
+        
         resp = await client.get(list_url, params={"limit": 100})
         resp.raise_for_status()
         data = resp.json()
+
+        logger.debug("Получено вебхуков: %d", len(data.get("rows", [])))
 
         for row in data.get("rows", []):
             if (
@@ -203,9 +185,15 @@ class WebhookService:
                 and row.get("action") == action
                 and row.get("url") == url
             ):
+                logger.debug("Найден существующий вебхук: %s", row.get("id"))
                 return row
         return None
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
     async def _create_webhook(
         self,
         client: httpx.AsyncClient,
@@ -214,37 +202,46 @@ class WebhookService:
         action: str,
         url: str,
     ) -> Dict[str, Any]:
-        """
-        POST /entity/webhook — создаём новый вебхук.
-        """
         create_url = f"{base_url}/entity/webhook"
         payload = {
             "url": url,
             "action": action,
             "entityType": entity_type,
         }
+        logger.info("Создание вебхука: %s", payload)
+        
         resp = await client.post(create_url, json=payload)
         resp.raise_for_status()
-        return resp.json()
+        result = resp.json()
+        
+        logger.info("Вебхук создан: id=%s", result.get("id"))
+        return result
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
     async def _update_webhook_enabled(
         self,
         client: httpx.AsyncClient,
         webhook: Dict[str, Any],
         enabled: bool,
     ) -> Dict[str, Any]:
-        """
-        PUT /entity/webhook/{id}  или по meta.href — включаем/выключаем вебхук.
-        """
         meta = webhook.get("meta") or {}
         href = meta.get("href")
+        
         if not href:
-            # fallback: строим по id
-            webhook_id = webhook["id"]
-            # href вида: https://online.moysklad.ru/api/remap/1.1/entity/webhook/{id}
-            # Можно дернуть напрямую по href, если оно полное, httpx это переварит.
-            raise ValueError(f"No meta.href in webhook: {webhook_id}")
+            webhook_id = webhook.get("id")
+            raise WebhookServiceError(
+                f"Отсутствует meta.href для вебхука {webhook_id}"
+            )
 
+        logger.info("Обновление вебхука %s: enabled=%s", webhook.get("id"), enabled)
+        
         resp = await client.put(href, json={"enabled": enabled})
         resp.raise_for_status()
-        return resp.json()
+        result = resp.json()
+        
+        logger.info("Вебхук обновлен: id=%s, enabled=%s", result.get("id"), enabled)
+        return result
