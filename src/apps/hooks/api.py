@@ -52,10 +52,10 @@ async def get_webhook_service(
 @router.get("/webhooks/status", response_model=WebhookStatusResponse)
 async def get_webhooks_status(service: WebhookService = Depends(get_webhook_service),):
     """
-   Получить текущее состояние всех вебхуков.
-   
-   Returns:
-       Статус всех вебхуков
+    Получить текущее состояние всех вебхуков.
+    
+    Returns:
+        Статус всех вебхуков
     """
     status_dict = await service.get_webhooks_status()
     return WebhookStatusResponse(webhooks=status_dict)
@@ -83,7 +83,7 @@ async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookServi
     )
 
     try:
-       result = await service.toggle_webhook(
+        result = await service.toggle_webhook(
             payment_type=payload.payment_type,
             enabled=payload.enabled,
         )
@@ -91,10 +91,9 @@ async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookServi
         logger.exception("Ошибка при синхронизации вебхука")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-           detail=f"Ошибка при переключении вебхука: {str(exc)}",
-       ) from exc
+            detail=f"Ошибка при переключении вебхука: {str(exc)}",
+        ) from exc
    
-    # Обработка результата
     if result.is_skipped():
         return {
             "status": "warning",
@@ -108,15 +107,15 @@ async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookServi
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=result.error or "Unknown error",
-            )
+        )
 
-        return {
-            "status": "ok",
-            "payment_type": payload.payment_type,
-            "enabled": payload.enabled,
+    return {
+        "status": "ok",
+        "payment_type": payload.payment_type,
+        "enabled": payload.enabled,
         "operation": result.operation,
         "db_record_id": result.details.get("db_record_id"),
-        }
+    }
 
 
 @router.post("/moysklad/webhook", status_code=204)
@@ -161,7 +160,5 @@ async def receive_moysklad_webhook(
             event.accountId,
             event.updatedFields,
         )
-
-    # TODO: Реализовать обработку событий (поиск и привязка документов)
 
     return Response(status_code=204)

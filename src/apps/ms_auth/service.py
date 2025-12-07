@@ -1,7 +1,8 @@
 import base64
 import logging
-import os
 from typing import Optional
+
+from src.core.config import settings
 
 from .schemas import MySkladCredentialsIn, MySkladCredentialsOut
 
@@ -17,9 +18,9 @@ class MySkladAuthService:
         if self._credentials is not None:
             return
 
-        login = os.getenv("MS_LOGIN")
-        password = os.getenv("MS_PASSWORD")
-        base_url = os.getenv("MS_BASE_URL", "https://api.moysklad.ru/api/remap/1.2")
+        login = settings.ms_login
+        password = settings.ms_password
+        base_url = settings.ms_base_url
 
         if login and password:
             logger.info("Загружены credentials МойСклад из ENV: login=%s", login)
@@ -34,7 +35,7 @@ class MySkladAuthService:
                 self._credentials = None
         else:
             logger.warning(
-                "Credentials МойСклад не найдены в ENV (MS_LOGIN, MS_PASSWORD)"
+                "Credentials МойСклад не найдены в ENV (APL_MS_LOGIN, APL_MS_PASSWORD)"
             )
 
     def set_credentials(self, creds: MySkladCredentialsIn) -> None:
