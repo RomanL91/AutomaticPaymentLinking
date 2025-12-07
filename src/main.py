@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from src.apps.hooks.api import router as hooks_router
+from src.apps.hooks.exception_handlers import EXCEPTION_HANDLERS
 from src.apps.ms_auth.api import router as ms_auth_router
 from src.core.database import init_db
 from src.core.logging_config import setup_logging
@@ -29,6 +30,9 @@ app = FastAPI(
     title="МС: Автоматическая привязка платежей",
     lifespan=lifespan,
 )
+
+for exc_class, handler in EXCEPTION_HANDLERS.items():
+    app.add_exception_handler(exc_class, handler)
 
 app.mount("/static", StaticFiles(directory="src/static"), name="static")
 

@@ -28,17 +28,10 @@ async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookSvcDe
         payload.enabled,
     )
 
-    try:
-        result = await service.toggle_webhook(
-            payment_type=payload.payment_type,
-            enabled=payload.enabled,
-        )
-    except Exception as exc:
-        logger.exception("Ошибка при синхронизации вебхука")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при переключении вебхука: {str(exc)}",
-        ) from exc
+    result = await service.toggle_webhook(
+        payment_type=payload.payment_type,
+        enabled=payload.enabled,
+    )
    
     if result.is_skipped():
         return {
@@ -48,12 +41,6 @@ async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookSvcDe
             "operation": result.operation,
             "message": result.message or "Операция пропущена",
         }
-   
-    if result.is_error():
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=result.error or "Unknown error",
-        )
 
     return {
         "status": "ok",
@@ -69,19 +56,6 @@ async def receive_moysklad_webhook(
     payload: MySkladWebhookPayload,
     request_id: str | None = Query(default=None, alias="requestId"),
 ):
-    """
-    Принять входящий вебхук от МойСклад.
-    
-    Args:
-        payload: Данные вебхука
-        request_id: ID запроса
-        
-    Returns:
-        204 No Content
-        
-    Raises:
-        HTTPException: Если requestId отсутствует
-    """
     if not request_id:
         logger.warning("Получен вебхук без requestId")
         raise HTTPException(

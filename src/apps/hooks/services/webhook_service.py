@@ -8,7 +8,6 @@ from src.core.config import settings
 from ...ms_auth.services.auth_service import MySkladAuthService
 from ..domain.entities import WebhookOperationResult
 from ..domain.value_objects import WebhookConfiguration
-from ..exceptions import WebhookConfigurationError
 from ..schemas import PaymentType
 from ..uow.unit_of_work import UnitOfWork
 from .moysklad_client import MoySkladClient
@@ -56,20 +55,6 @@ class WebhookService:
         payment_type: PaymentType,
         enabled: bool,
     ) -> WebhookOperationResult:
-        """
-        Переключить состояние вебхука (включить/выключить).
-        
-        Args:
-            payment_type: Тип платежа
-            enabled: Желаемое состояние (True - включить, False - выключить)
-            
-        Returns:
-            Результат операции
-            
-        Raises:
-            WebhookConfigurationError: При ошибке конфигурации
-        """
-        # Валидация конфигурации
         webhook_url = settings.ms_webhook_url
         
         if not webhook_url:

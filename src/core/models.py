@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime
+from sqlalchemy import Boolean, DateTime, Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 from sqlalchemy.sql import func
 
@@ -15,7 +15,7 @@ class Base(DeclarativeBase):
         return f"{cls.__name__.lower()}s"
 
     id: Mapped[int] = mapped_column(
-        int,
+        Integer,
         primary_key=True,
         index=True,
     )

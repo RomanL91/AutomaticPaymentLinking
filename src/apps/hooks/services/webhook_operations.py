@@ -6,6 +6,7 @@ from typing import Dict
 
 from ..domain.entities import WebhookEntity, WebhookOperationResult
 from ..domain.value_objects import WebhookConfiguration
+from ..exceptions import MoySkladAPIError
 from .moysklad_client import MoySkladClient
 
 logger = logging.getLogger(__name__)
@@ -40,34 +41,19 @@ class EnableWebhookOperation(WebhookOperation):
     """Операция включения вебхука."""
     
     async def execute(self) -> WebhookOperationResult:
-        """
-        Включить вебхук (создать новый или активировать существующий).
+        existing = await self._client.find_webhook(
+            entity_type=self._config.entity_type,
+            action=self._config.action,
+            url=self._config.url,
+        )
         
-        Returns:
-            Результат операции
-        """
-        try:
-            existing = await self._client.find_webhook(
-                entity_type=self._config.entity_type,
-                action=self._config.action,
-                url=self._config.url,
-            )
-            
-            if not existing:
-                return await self._create_new_webhook()
-            
-            if existing.get("enabled") is True:
-                return self._already_enabled_result(existing)
-            
-            return await self._enable_existing_webhook(existing)
-            
-        except Exception as exc:
-            logger.exception("Ошибка при включении вебхука")
-            return WebhookOperationResult(
-                operation="error_enabling",
-                success=False,
-                error=str(exc),
-            )
+        if not existing:
+            return await self._create_new_webhook()
+        
+        if existing.get("enabled") is True:
+            return self._already_enabled_result(existing)
+        
+        return await self._enable_existing_webhook(existing)
     
     async def _create_new_webhook(self) -> WebhookOperationResult:
         """Создать новый вебхук."""
@@ -143,34 +129,19 @@ class DisableWebhookOperation(WebhookOperation):
     """Операция отключения вебхука."""
     
     async def execute(self) -> WebhookOperationResult:
-        """
-        Отключить вебхук.
+        existing = await self._client.find_webhook(
+            entity_type=self._config.entity_type,
+            action=self._config.action,
+            url=self._config.url,
+        )
         
-        Returns:
-            Результат операции
-        """
-        try:
-            existing = await self._client.find_webhook(
-                entity_type=self._config.entity_type,
-                action=self._config.action,
-                url=self._config.url,
-            )
-            
-            if not existing:
-                return self._not_found_result()
-            
-            if existing.get("enabled") is False:
-                return self._already_disabled_result(existing)
-            
-            return await self._disable_existing_webhook(existing)
-            
-        except Exception as exc:
-            logger.exception("Ошибка при отключении вебхука")
-            return WebhookOperationResult(
-                operation="error_disabling",
-                success=False,
-                error=str(exc),
-            )
+        if not existing:
+            return self._not_found_result()
+        
+        if existing.get("enabled") is False:
+            return self._already_disabled_result(existing)
+        
+        return await self._disable_existing_webhook(existing)
     
     async def _disable_existing_webhook(self, existing: Dict) -> WebhookOperationResult:
         """Деактивировать существующий вебхук."""
