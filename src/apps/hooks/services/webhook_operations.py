@@ -1,0 +1,258 @@
+"""Операции с вебхуками (Strategy Pattern)."""
+
+import logging
+from abc import ABC, abstractmethod
+from typing import Dict
+
+from ..domain.entities import WebhookEntity, WebhookOperationResult
+from ..domain.value_objects import WebhookConfiguration
+from .moysklad_client import MoySkladClient
+
+logger = logging.getLogger(__name__)
+
+
+class WebhookOperation(ABC):
+    """Абстрактная операция с вебхуком (Strategy Pattern)."""
+    
+    def __init__(self, client: MoySkladClient, config: WebhookConfiguration) -> None:
+        """
+        Инициализировать операцию.
+        
+        Args:
+            client: Клиент МойСклад API
+            config: Конфигурация вебхука
+        """
+        self._client = client
+        self._config = config
+    
+    @abstractmethod
+    async def execute(self) -> WebhookOperationResult:
+        """
+        Выполнить операцию.
+        
+        Returns:
+            Результат операции
+        """
+        raise NotImplementedError
+
+
+class EnableWebhookOperation(WebhookOperation):
+    """Операция включения вебхука."""
+    
+    async def execute(self) -> WebhookOperationResult:
+        """
+        Включить вебхук (создать новый или активировать существующий).
+        
+        Returns:
+            Результат операции
+        """
+        try:
+            existing = await self._client.find_webhook(
+                entity_type=self._config.entity_type,
+                action=self._config.action,
+                url=self._config.url,
+            )
+            
+            if not existing:
+                return await self._create_new_webhook()
+            
+            if existing.get("enabled") is True:
+                return self._already_enabled_result(existing)
+            
+            return await self._enable_existing_webhook(existing)
+            
+        except Exception as exc:
+            logger.exception("Ошибка при включении вебхука")
+            return WebhookOperationResult(
+                operation="error_enabling",
+                success=False,
+                error=str(exc),
+            )
+    
+    async def _create_new_webhook(self) -> WebhookOperationResult:
+        """Создать новый вебхук."""
+        webhook_data = await self._client.create_webhook(
+            entity_type=self._config.entity_type,
+            action=self._config.action,
+            url=self._config.url,
+        )
+        
+        entity = self._webhook_data_to_entity(webhook_data)
+        logger.info("Создан новый вебхук: %s", entity.ms_webhook_id)
+        
+        return WebhookOperationResult(
+            operation="created_and_enabled",
+            success=True,
+            webhook_entity=entity,
+        )
+    
+    async def _enable_existing_webhook(self, existing: Dict) -> WebhookOperationResult:
+        """Активировать существующий вебхук."""
+        updated = await self._client.update_webhook_enabled(
+            webhook_data=existing,
+            enabled=True,
+        )
+        
+        entity = self._webhook_data_to_entity(updated)
+        logger.info("Вебхук включен: %s", entity.ms_webhook_id)
+        
+        return WebhookOperationResult(
+            operation="enabled",
+            success=True,
+            webhook_entity=entity,
+        )
+    
+    def _already_enabled_result(self, existing: Dict) -> WebhookOperationResult:
+        """Вебхук уже включен."""
+        entity = self._webhook_data_to_entity(existing)
+        
+        return WebhookOperationResult(
+            operation="already_enabled",
+            success=True,
+            webhook_entity=entity,
+        )
+    
+    @staticmethod
+    def _webhook_data_to_entity(webhook_data: Dict) -> WebhookEntity:
+        """
+        Преобразовать данные API в доменную сущность.
+        
+        Args:
+            webhook_data: Данные вебхука из API
+            
+        Returns:
+            Доменная сущность
+        """
+        from ..schemas import PaymentType
+        
+        meta = webhook_data.get("meta") or {}
+        
+        return WebhookEntity(
+            payment_type=PaymentType.incoming_payment,
+            entity_type=webhook_data.get("entityType", ""),
+            action=webhook_data.get("action", ""),
+            url=webhook_data.get("url", ""),
+            ms_webhook_id=webhook_data.get("id", ""),
+            ms_href=meta.get("href"),
+            ms_account_id=webhook_data.get("accountId"),
+            enabled=bool(webhook_data.get("enabled", True)),
+        )
+
+
+class DisableWebhookOperation(WebhookOperation):
+    """Операция отключения вебхука."""
+    
+    async def execute(self) -> WebhookOperationResult:
+        """
+        Отключить вебхук.
+        
+        Returns:
+            Результат операции
+        """
+        try:
+            existing = await self._client.find_webhook(
+                entity_type=self._config.entity_type,
+                action=self._config.action,
+                url=self._config.url,
+            )
+            
+            if not existing:
+                return self._not_found_result()
+            
+            if existing.get("enabled") is False:
+                return self._already_disabled_result(existing)
+            
+            return await self._disable_existing_webhook(existing)
+            
+        except Exception as exc:
+            logger.exception("Ошибка при отключении вебхука")
+            return WebhookOperationResult(
+                operation="error_disabling",
+                success=False,
+                error=str(exc),
+            )
+    
+    async def _disable_existing_webhook(self, existing: Dict) -> WebhookOperationResult:
+        """Деактивировать существующий вебхук."""
+        updated = await self._client.update_webhook_enabled(
+            webhook_data=existing,
+            enabled=False,
+        )
+        
+        from ..schemas import PaymentType
+        meta = updated.get("meta") or {}
+        
+        entity = WebhookEntity(
+            payment_type=PaymentType.incoming_payment,
+            entity_type=updated.get("entityType", ""),
+            action=updated.get("action", ""),
+            url=updated.get("url", ""),
+            ms_webhook_id=updated.get("id", ""),
+            ms_href=meta.get("href"),
+            ms_account_id=updated.get("accountId"),
+            enabled=bool(updated.get("enabled", False)),
+        )
+        
+        logger.info("Вебхук выключен: %s", entity.ms_webhook_id)
+        
+        return WebhookOperationResult(
+            operation="disabled",
+            success=True,
+            webhook_entity=entity,
+        )
+    
+    def _not_found_result(self) -> WebhookOperationResult:
+        """Вебхук не найден."""
+        return WebhookOperationResult(
+            operation="not_found_to_disable",
+            success=True,
+            message="Вебхук не найден",
+        )
+    
+    def _already_disabled_result(self, existing: Dict) -> WebhookOperationResult:
+        """Вебхук уже отключен."""
+        from ..schemas import PaymentType
+        meta = existing.get("meta") or {}
+        
+        entity = WebhookEntity(
+            payment_type=PaymentType.incoming_payment,
+            entity_type=existing.get("entityType", ""),
+            action=existing.get("action", ""),
+            url=existing.get("url", ""),
+            ms_webhook_id=existing.get("id", ""),
+            ms_href=meta.get("href"),
+            ms_account_id=existing.get("accountId"),
+            enabled=bool(existing.get("enabled", False)),
+        )
+        
+        return WebhookOperationResult(
+            operation="already_disabled",
+            success=True,
+            webhook_entity=entity,
+        )
+
+
+class WebhookOperationFactory:
+    """Фабрика для создания операций с вебхуками (Factory Pattern)."""
+    
+    @staticmethod
+    def create_operation(
+        enabled: bool,
+        client: MoySkladClient,
+        config: WebhookConfiguration,
+    ) -> WebhookOperation:
+        """
+        Создать операцию в зависимости от требуемого действия.
+        
+        Args:
+            enabled: True для включения, False для отключения
+            client: Клиент МойСклад API
+            config: Конфигурация вебхука
+            
+        Returns:
+            Операция с вебхуком
+        """
+        if enabled:
+            return EnableWebhookOperation(client, config)
+        else:
+            return DisableWebhookOperation(client, config)
