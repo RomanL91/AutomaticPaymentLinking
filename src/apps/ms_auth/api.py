@@ -1,15 +1,13 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, status
 
+from .dependencies import AuthSvcDep
 from .schemas import MySkladCredentialsIn, MySkladCredentialsOut
-from .services.auth_service import MySkladAuthService, get_ms_auth_service
 
 router = APIRouter()
 
 
 @router.get("/credentials", response_model=MySkladCredentialsOut | None)
-async def get_credentials(
-    auth_service: MySkladAuthService = Depends(get_ms_auth_service),
-):
+async def get_credentials(auth_service: AuthSvcDep):
     """
     Получить текущие настройки доступа к МойСклад (без пароля).
     Если настроек нет — вернём null.
@@ -22,10 +20,7 @@ async def get_credentials(
     response_model=MySkladCredentialsOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def set_credentials(
-    payload: MySkladCredentialsIn,
-    auth_service: MySkladAuthService = Depends(get_ms_auth_service),
-):
+async def set_credentials(payload: MySkladCredentialsIn, auth_service: AuthSvcDep):
     """
     Сохранить/обновить настройки доступа к МойСклад.
     """

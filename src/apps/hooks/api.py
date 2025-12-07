@@ -1,83 +1,27 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from src.apps.ms_auth.services.auth_service import (
-    MySkladAuthService,
-    get_ms_auth_service,
-)
-
+from .dependencies import WebhookSvcDep
 from .schemas import (
     AutoLinkTogglePayload,
     MySkladWebhookPayload,
     WebhookStatusResponse,
 )
-from .services.webhook_service import WebhookService
-from .uow.unit_of_work import UnitOfWork
 
 logger = logging.getLogger(__name__)
- 
+
 router = APIRouter()
- 
- 
-async def get_uow(session: AsyncSession = Depends(get_session)) -> UnitOfWork:
-    """
-    Dependency для получения Unit of Work.
-    
-    Args:
-        session: Асинхронная сессия БД
-        
-    Returns:
-        Экземпляр Unit of Work
-    """
-    return UnitOfWork(session)
-
-
-async def get_webhook_service(
-    uow: UnitOfWork = Depends(get_uow),
-    auth_service: MySkladAuthService = Depends(get_ms_auth_service),
-) -> WebhookService:
-    """
-    Dependency для получения сервиса вебхуков.
-    
-    Args:
-        uow: Unit of Work
-        auth_service: Сервис аутентификации МойСклад
-        
-    Returns:
-        Экземпляр сервиса вебхуков
-    """
-    return WebhookService(uow=uow, auth_service=auth_service)
 
 
 @router.get("/webhooks/status", response_model=WebhookStatusResponse)
-async def get_webhooks_status(service: WebhookService = Depends(get_webhook_service),):
-    """
-    Получить текущее состояние всех вебхуков.
-    
-    Returns:
-        Статус всех вебхуков
-    """
+async def get_webhooks_status(service: WebhookSvcDep):
     status_dict = await service.get_webhooks_status()
     return WebhookStatusResponse(webhooks=status_dict)
 
 
 @router.post("/auto-link-toggle")
-async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookService = Depends(get_webhook_service),):
-    """
-    Переключить автоматическую привязку платежей.
-    
-    Args:
-        payload: Данные для переключения
-        service: Сервис вебхуков
-        
-    Returns:
-        Результат операции
-        
-    Raises:
-        HTTPException: При ошибке выполнения
-    """
+async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookSvcDep):
     logger.info(
         "UI toggle: payment_type=%s, enabled=%s",
         payload.payment_type,

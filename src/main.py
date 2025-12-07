@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from src.apps.hooks.api import router as hooks_router
 from src.apps.ms_auth.api import router as ms_auth_router
-from src.core.db import init_db
+from src.core.database import init_db
 from src.core.logging_config import setup_logging
 
 # Создаём папку для логов
