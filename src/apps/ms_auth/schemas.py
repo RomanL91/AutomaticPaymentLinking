@@ -5,8 +5,8 @@ class MySkladCredentialsIn(BaseModel):
     """
     Что вводим/храним: логин/пароль и базовый URL API МойСклад.
     """
-    login: str = "spec-it@installbiz"
-    password: str = "Pikqqtn&21"
+    login: str = ""
+    password: str = ""
     base_url: HttpUrl = "https://api.moysklad.ru/api/remap/1.2"
 
 
