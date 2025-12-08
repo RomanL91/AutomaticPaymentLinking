@@ -1,14 +1,10 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.core.database import get_session
+from fastapi import APIRouter, Response
 
 from ..customerorder.dependencies import CustomerOrderSvcDep
 from ..paymentin.dependencies import PaymentInSvcDep
-from .dependencies import WebhookSvcDep
-from .models import WebhookSubscription
+from .dependencies import RequestIdQuery, WebhookSvcDep
 from .schemas import (
     AutoLinkTogglePayload,
     MySkladWebhookPayload,
@@ -16,7 +12,6 @@ from .schemas import (
     UpdateLinkSettingsPayload,
     WebhookStatusResponse,
 )
-from .services.webhook_handler import WebhookHandler
 
 logger = logging.getLogger(__name__)
 
@@ -88,18 +83,11 @@ async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookSvcDe
 @router.post("/moysklad/webhook", status_code=204)
 async def receive_moysklad_webhook(
     payload: MySkladWebhookPayload,
+    service: WebhookSvcDep,
     paymentin_service: PaymentInSvcDep,
     customerorder_service: CustomerOrderSvcDep,
-    session: AsyncSession = Depends(get_session),
-    request_id: str | None = Query(default=None, alias="requestId"),
-):
-    if not request_id:
-        logger.warning("Получен вебхук без requestId")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="requestId обязателен",
-        )
-
+    request_id: RequestIdQuery,
+) -> Response:
     logger.info(
         "Получен вебхук МойСклад: requestId=%s, events=%d, uid=%s, moment=%s",
         request_id,
@@ -108,47 +96,10 @@ async def receive_moysklad_webhook(
         payload.auditContext.moment,
     )
 
-    handler = WebhookHandler(paymentin_service, customerorder_service)
-
-    for event in payload.events:
-        logger.info(
-            "Событие вебхука: type=%s, action=%s, href=%s, accountId=%s, updatedFields=%s",
-            event.meta.type,
-            event.action,
-            event.meta.href,
-            event.accountId,
-            event.updatedFields,
-        )
-
-        if event.meta.type == "paymentin" and event.action == "CREATE":
-            account_id = event.accountId
-            entity_type = event.meta.type
-
-            from sqlalchemy import select
-            stmt = select(WebhookSubscription).where(
-                WebhookSubscription.ms_account_id == account_id,
-                WebhookSubscription.entity_type == entity_type,
-                WebhookSubscription.payment_type == PaymentType.incoming_payment,
-                WebhookSubscription.enabled == True,
-            ).order_by(WebhookSubscription.id.desc())
-            
-            result = await session.execute(stmt)
-            subscription = result.scalars().first()
-
-            if subscription:
-                result = await handler.handle_paymentin_create(
-                    event.meta.href, subscription
-                )
-                logger.info(
-                    "Результат обработки платежа: success=%s, message=%s",
-                    result["success"],
-                    result["message"],
-                )
-            else:
-                logger.warning(
-                    "Активная подписка не найдена для аккаунта %s и типа %s",
-                    account_id,
-                    entity_type,
-                )
+    await service.process_incoming_webhook(
+        payload=payload,
+        paymentin_service=paymentin_service,
+        customerorder_service=customerorder_service,
+    )
 
     return Response(status_code=204)

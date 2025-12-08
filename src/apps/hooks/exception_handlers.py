@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from .exceptions import (
     HooksBaseException,
+    MissingRequestIdError,
     MoySkladAPIError,
     RepositoryError,
     WebhookAlreadyExistsError,
@@ -108,8 +109,22 @@ async def repository_error_handler(
         },
     )
 
+async def missing_request_id_handler(
+    request: Request,
+    exc: MissingRequestIdError,
+) -> JSONResponse:
+    logger.warning("MissingRequestIdError: %s", exc.message)
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "detail": exc.message,
+            "error_type": "MissingRequestIdError",
+        },
+    )
+
 
 EXCEPTION_HANDLERS = {
+    MissingRequestIdError: missing_request_id_handler,
     WebhookNotFoundError: webhook_not_found_handler,
     WebhookAlreadyExistsError: webhook_already_exists_handler,
     WebhookConfigurationError: webhook_configuration_error_handler,

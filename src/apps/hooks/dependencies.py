@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.ms_auth.services.auth_service import (
@@ -26,3 +26,4 @@ async def get_webhook_service(
 
 UOWDep = Annotated[UnitOfWork, Depends(get_uow)]
 WebhookSvcDep = Annotated[WebhookService, Depends(get_webhook_service)]
+RequestIdQuery = Annotated[str | None, Query(default=None, alias="requestId")]

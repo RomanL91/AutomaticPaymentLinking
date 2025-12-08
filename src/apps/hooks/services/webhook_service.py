@@ -8,9 +8,11 @@ from src.core.config import settings
 from ...ms_auth.services.auth_service import MySkladAuthService
 from ..domain.entities import WebhookOperationResult
 from ..domain.value_objects import WebhookConfiguration
+from ..exceptions import MissingRequestIdError
 from ..schemas import DocumentType, LinkType, PaymentType, WebhookStatusItem
 from ..uow.unit_of_work import UnitOfWork
 from .moysklad_client import MoySkladClient
+from .webhook_handler import WebhookHandler
 from .webhook_operations import WebhookOperationFactory
 
 logger = logging.getLogger(__name__)
@@ -169,3 +171,48 @@ class WebhookService:
             result.details["db_record_id"] = saved_entity.id
         
         return result
+    
+    async def process_incoming_webhook(
+        self,
+        request_id: str | None,
+        payload,
+        paymentin_service,
+        customerorder_service,
+    ) -> None:
+        """
+        Обработать входящий webhook от МойСклад.
+        
+        Args:
+            request_id: ID запроса вебхука
+            payload: Данные webhook
+            paymentin_service: Сервис работы с платежами
+            customerorder_service: Сервис работы с заказами
+        """
+        if not request_id:
+            raise MissingRequestIdError("requestId обязателен")
+
+        handler = WebhookHandler(paymentin_service, customerorder_service)
+        
+        for event in payload.events:
+            logger.info(
+                "Событие вебхука: type=%s, action=%s, href=%s, accountId=%s, updatedFields=%s",
+                event.meta.type,
+                event.action,
+                event.meta.href,
+                event.accountId,
+                event.updatedFields,
+            )
+            
+            # Потенциальное место стратегий/команд (пришло такое - делай так).
+            if event.meta.type == "paymentin" and event.action == "CREATE":
+                subscription = await self._uow.webhooks.get_active_subscription_for_event(
+                    account_id=event.accountId,
+                    entity_type=event.meta.type,
+                    payment_type=PaymentType.incoming_payment,
+                )
+                
+                if subscription:
+                    result = await handler.handle_paymentin_create(event.meta.href, subscription)
+                    logger.info("Результат обработки платежа: success=%s, message=%s", result["success"], result["message"])
+                else:
+                    logger.warning("Активная подписка не найдена для аккаунта %s и типа %s", event.accountId, event.meta.type)

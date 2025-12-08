@@ -7,7 +7,7 @@ from ...customerorder.exceptions import CustomerOrderNotFoundError
 from ...customerorder.services.customerorder_service import CustomerOrderService
 from ...paymentin.exceptions import PaymentInNotFoundError
 from ...paymentin.services.paymentin_service import PaymentInService
-from ..models import WebhookSubscription
+from ..domain.entities import WebhookEntity
 from ..schemas import DocumentType, LinkType
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class WebhookHandler:
         self.customerorder_service = customerorder_service
     
     async def handle_paymentin_create(
-        self, event_href: str, subscription: WebhookSubscription
+        self, event_href: str, subscription: WebhookEntity
     ) -> dict:
         """Обработать событие создания входящего платежа."""
         try:

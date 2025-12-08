@@ -28,3 +28,6 @@ class MoySkladAPIError(HooksBaseException):
 
 class RepositoryError(HooksBaseException):
     """Ошибка при работе с репозиторием."""
+
+class MissingRequestIdError(HooksBaseException):
+    """Отсутствует обязательный requestId."""

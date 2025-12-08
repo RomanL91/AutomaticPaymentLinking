@@ -89,6 +89,35 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
         
         return self._to_entity(model) if model else None
     
+    async def get_active_subscription_for_event(
+        self,
+        account_id: str,
+        entity_type: str,
+        payment_type: PaymentType,
+    ) -> Optional[WebhookEntity]:
+        """
+        Получить активную подписку для обработки события.
+        
+        Args:
+            account_id: ID аккаунта МойСклад
+            entity_type: Тип сущности
+            payment_type: Тип платежа
+            
+        Returns:
+            Активная подписка или None
+        """
+        stmt = select(WebhookSubscription).where(
+            WebhookSubscription.ms_account_id == account_id,
+            WebhookSubscription.entity_type == entity_type,
+            WebhookSubscription.payment_type == payment_type,
+            WebhookSubscription.enabled == True,
+        ).order_by(WebhookSubscription.id.desc())
+        
+        result = await self._session.execute(stmt)
+        model = result.scalars().first()
+        
+        return self._to_entity(model) if model else None
+    
     async def update_link_settings(
         self,
         payment_type: PaymentType,
