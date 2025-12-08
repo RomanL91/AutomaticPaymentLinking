@@ -15,7 +15,12 @@ logger = logging.getLogger(__name__)
 class WebhookOperation(ABC):
     """Абстрактная операция с вебхуком (Strategy Pattern)."""
     
-    def __init__(self, client: MoySkladClient, config: WebhookConfiguration) -> None:
+    def __init__(
+        self,
+        client: MoySkladClient,
+        config: WebhookConfiguration,
+        existing_db_entity: WebhookEntity | None = None,
+    ) -> None:
         """
         Инициализировать операцию.
         
@@ -25,6 +30,49 @@ class WebhookOperation(ABC):
         """
         self._client = client
         self._config = config
+        self._existing_db_entity = existing_db_entity
+
+    async def _get_webhook_from_db_reference(self) -> Dict | None:
+        """Попробовать получить вебхук по ссылке из БД (по ms_webhook_id).
+
+        Возвращает None, если записи нет или вебхук не найден в МойСклад.
+        """
+
+        if not self._existing_db_entity:
+            return None
+
+        webhook_id = self._existing_db_entity.ms_webhook_id
+        if not webhook_id:
+            return None
+
+        logger.info(
+            "Пробуем найти вебхук по сохраненному ID из БД: %s", webhook_id
+        )
+
+        webhook = await self._client.get_webhook_by_id(webhook_id)
+
+        if not webhook:
+            return None
+
+        if webhook.get("entityType") != self._config.entity_type or webhook.get(
+            "action"
+        ) != self._config.action:
+            logger.warning(
+                "Найден вебхук по ID, но тип/действие отличаются: db(entity=%s, action=%s), api(entity=%s, action=%s)",
+                self._existing_db_entity.entity_type,
+                self._existing_db_entity.action,
+                webhook.get("entityType"),
+                webhook.get("action"),
+            )
+
+        if webhook.get("url") != self._config.url:
+            logger.info(
+                "URL вебхука по сохраненному ID отличается от ожидаемого. Ожидали: %s, получили: %s",
+                self._config.url,
+                webhook.get("url"),
+            )
+
+        return webhook
     
     @abstractmethod
     async def execute(self) -> WebhookOperationResult:
@@ -44,11 +92,14 @@ class EnableWebhookOperation(WebhookOperation):
         logger.info("Выполнение EnableWebhookOperation: entity_type=%s, action=%s, url=%s",
                     self._config.entity_type, self._config.action, self._config.url)
         
-        existing = await self._client.find_webhook(
-            entity_type=self._config.entity_type,
-            action=self._config.action,
-            url=self._config.url,
-        )
+        existing = await self._get_webhook_from_db_reference()
+
+        if not existing:
+            existing = await self._client.find_webhook(
+                entity_type=self._config.entity_type,
+                action=self._config.action,
+                url=self._config.url,
+            )
         
         if not existing:
             logger.info("Существующий вебхук не найден, создаем новый")
@@ -138,11 +189,14 @@ class DisableWebhookOperation(WebhookOperation):
     """Операция отключения вебхука."""
     
     async def execute(self) -> WebhookOperationResult:
-        existing = await self._client.find_webhook(
-            entity_type=self._config.entity_type,
-            action=self._config.action,
-            url=self._config.url,
-        )
+        existing = await self._get_webhook_from_db_reference()
+
+        if not existing:
+            existing = await self._client.find_webhook(
+                entity_type=self._config.entity_type,
+                action=self._config.action,
+                url=self._config.url,
+            )
         
         if not existing:
             return self._not_found_result()
@@ -220,6 +274,7 @@ class WebhookOperationFactory:
         enabled: bool,
         client: MoySkladClient,
         config: WebhookConfiguration,
+        existing_db_entity: WebhookEntity | None = None,
     ) -> WebhookOperation:
         """
         Создать операцию в зависимости от требуемого действия.
@@ -233,6 +288,6 @@ class WebhookOperationFactory:
             Операция с вебхуком
         """
         if enabled:
-            return EnableWebhookOperation(client, config)
+            return EnableWebhookOperation(client, config, existing_db_entity)
         else:
-            return DisableWebhookOperation(client, config)
+            return DisableWebhookOperation(client, config, existing_db_entity)

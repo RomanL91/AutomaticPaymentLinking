@@ -85,29 +85,52 @@ class MoySkladClient:
         try:
             base_url = self._get_base_url()
             headers = self._get_headers()
+            all_rows: list[Dict[str, Any]] = []
+            offset = 0
             
             async with httpx.AsyncClient(headers=headers, timeout=self._timeout) as client:
                 url = f"{base_url}/entity/webhook"
-                logger.debug("Запрос списка вебхуков: %s", url)
-                
-                resp = await client.get(url, params={"limit": limit})
-                resp.raise_for_status()
-                data = resp.json()
-                
-                rows = data.get("rows", [])
-                logger.info("Получено вебхуков: %d", len(rows))
-                
-                for webhook in rows:
-                    logger.info(
-                        "Найден вебхук в МойСклад: id=%s, entityType=%s, action=%s, url=%s, enabled=%s",
-                        webhook.get("id"),
-                        webhook.get("entityType"),
-                        webhook.get("action"),
-                        webhook.get("url"),
-                        webhook.get("enabled"),
+                while True:
+                    logger.debug(
+                        "Запрос списка вебхуков: %s (limit=%s, offset=%s)",
+                        url,
+                        limit,
+                        offset,
                     )
+                    resp = await client.get(url, params={"limit": limit, "offset": offset})
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                    rows = data.get("rows", [])
+                    all_rows.extend(rows)
+                    logger.info("Получено вебхуков в пакете: %d (всего: %d)", len(rows), len(all_rows))
+
+                    for webhook in rows:
+                        logger.info(
+                            "Найден вебхук в МойСклад: id=%s, entityType=%s, action=%s, url=%s, enabled=%s",
+                            webhook.get("id"),
+                            webhook.get("entityType"),
+                            webhook.get("action"),
+                            webhook.get("url"),
+                            webhook.get("enabled"),
+                        )
+
+                    meta = data.get("meta", {})
+                    total_size = meta.get("size")
+
+                    if total_size is None:
+                        # Fallback: если size отсутствует, выходим когда получили меньше лимита
+                        if len(rows) < limit:
+                            break
+                        offset += limit
+                        continue
+
+                    offset += limit
+                    if offset >= total_size:
+                        break
+
+                return all_rows
                 
-                return rows
         except httpx.HTTPStatusError as exc:
             raise MoySkladAPIError(
                 "Ошибка HTTP при получении списка вебхуков",

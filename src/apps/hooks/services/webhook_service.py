@@ -143,11 +143,14 @@ class WebhookService:
             payment_type=payment_type,
             webhook_url=webhook_url,
         )
+
+        existing_db_entity = await self._uow.webhooks.get_by_payment_type(payment_type)
         
         operation = WebhookOperationFactory.create_operation(
             enabled=enabled,
             client=self._client,
             config=config,
+            existing_db_entity=existing_db_entity,
         )
         
         result = await operation.execute()
