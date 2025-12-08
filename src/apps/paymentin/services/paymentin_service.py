@@ -16,28 +16,58 @@ class PaymentInService:
         self._auth_service = auth_service
         self._client = PaymentInClient(auth_service)
     
+    async def get_by_id(self, payment_id: str) -> PaymentInEntity:
+        """
+        Получить платеж по ID.
+        
+        Args:
+            payment_id: ID платежа
+            
+        Returns:
+            Доменная сущность платежа
+        """
+        base_url = self._client._get_base_url()
+        href = f"{base_url}/entity/paymentin/{payment_id}"
+        data = await self._client.get_by_href(href)
+        return self._to_entity(data)
+    
     async def get_by_href(self, href: str) -> PaymentInEntity:
-        """Получить платеж по href."""
+        """
+        Получить платеж по href.
+        
+        Args:
+            href: Полный href платежа
+            
+        Returns:
+            Доменная сущность платежа
+        """
         data = await self._client.get_by_href(href)
         return self._to_entity(data)
     
     async def link_to_document(
         self, payment_id: str, document_meta_href: str, linked_sum: float
     ) -> PaymentInEntity:
-        """Привязать платеж к документу."""
-        # Сначала получаем текущий платеж
+        """
+        Привязать платеж к документу.
+        
+        Args:
+            payment_id: ID платежа
+            document_meta_href: href документа для привязки
+            linked_sum: Сумма привязки
+            
+        Returns:
+            Обновленная сущность платежа
+        """
         payment_data = await self._client.get_by_href(
             f"{self._client._get_base_url()}/entity/paymentin/{payment_id}"
         )
         payment = self._to_entity(payment_data)
         
-        # Собираем существующие связи
         operations = [
             {"meta": op["meta"], "linkedSum": op.get("linkedSum", 0)}
             for op in payment.linked_operations
         ]
         
-        # Добавляем новую связь
         operations.append({
             "meta": {
                 "href": document_meta_href,
@@ -47,13 +77,20 @@ class PaymentInService:
             "linkedSum": linked_sum,
         })
         
-        # Обновляем платеж
         updated_data = await self._client.update_operations(payment_id, operations)
         return self._to_entity(updated_data)
     
     @staticmethod
     def _to_entity(data: dict) -> PaymentInEntity:
-        """Преобразовать данные API в доменную сущность."""
+        """
+        Преобразовать данные API в доменную сущность.
+        
+        Args:
+            data: Данные от API
+            
+        Returns:
+            Доменная сущность
+        """
         agent_meta = data.get("agent", {}).get("meta", {})
         agent_href = agent_meta.get("href", "")
         agent_id = agent_href.split("/")[-1] if agent_href else ""
@@ -89,6 +126,14 @@ class PaymentInService:
     
     @staticmethod
     def _extract_type_from_href(href: str) -> str:
-        """Извлечь тип документа из href."""
+        """
+        Извлечь тип документа из href.
+        
+        Args:
+            href: href документа
+            
+        Returns:
+            Тип документа
+        """
         parts = href.split("/")
         return parts[-2] if len(parts) >= 2 else "unknown"

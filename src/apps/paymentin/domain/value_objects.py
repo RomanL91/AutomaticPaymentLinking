@@ -1,4 +1,4 @@
-"""Value Objects для заказов покупателя."""
+"""Value Objects для входящих платежей."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -6,15 +6,14 @@ from typing import Optional
 
 
 @dataclass(frozen=True)
-class CustomerOrderFilter:
-    """Фильтр для поиска заказов покупателя (Value Object)."""
+class PaymentInFilter:
+    """Фильтр для поиска входящих платежей (Value Object)."""
     
     agent_id: Optional[str] = None
     sum_value: Optional[float] = None
     sum_tolerance: float = 0.01
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
-    only_unpaid: bool = True
     
     def to_moysklad_filter(self) -> str:
         """

@@ -5,13 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_session
 
-from ..customerorder.dependencies import CustomerOrderSvcDep, get_customerorder_service
-from ..paymentin.dependencies import PaymentInSvcDep, get_paymentin_service
+from ..customerorder.dependencies import CustomerOrderSvcDep
+from ..paymentin.dependencies import PaymentInSvcDep
 from .dependencies import WebhookSvcDep
 from .models import WebhookSubscription
 from .schemas import (
     AutoLinkTogglePayload,
     MySkladWebhookPayload,
+    PaymentType,
     UpdateLinkSettingsPayload,
     WebhookStatusResponse,
 )
@@ -121,14 +122,18 @@ async def receive_moysklad_webhook(
 
         if event.meta.type == "paymentin" and event.action == "CREATE":
             account_id = event.accountId
+            entity_type = event.meta.type
 
             from sqlalchemy import select
             stmt = select(WebhookSubscription).where(
                 WebhookSubscription.ms_account_id == account_id,
+                WebhookSubscription.entity_type == entity_type,
+                WebhookSubscription.payment_type == PaymentType.incoming_payment,
                 WebhookSubscription.enabled == True,
-            )
+            ).order_by(WebhookSubscription.id.desc())
+            
             result = await session.execute(stmt)
-            subscription = result.scalar_one_or_none()
+            subscription = result.scalars().first()
 
             if subscription:
                 result = await handler.handle_paymentin_create(
@@ -141,8 +146,9 @@ async def receive_moysklad_webhook(
                 )
             else:
                 logger.warning(
-                    "Активная подписка не найдена для аккаунта %s",
+                    "Активная подписка не найдена для аккаунта %s и типа %s",
                     account_id,
+                    entity_type,
                 )
 
     return Response(status_code=204)

@@ -7,16 +7,24 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from src.apps.customerorder.api import router as customerorder_router
+from src.apps.customerorder.exception_handlers import (
+    EXCEPTION_HANDLERS as CUSTOMERORDER_EXCEPTION_HANDLERS,
+)
 from src.apps.hooks.api import router as hooks_router
-from src.apps.hooks.exception_handlers import EXCEPTION_HANDLERS
+from src.apps.hooks.exception_handlers import (
+    EXCEPTION_HANDLERS as HOOKS_EXCEPTION_HANDLERS,
+)
 from src.apps.ms_auth.api import router as ms_auth_router
+from src.apps.paymentin.api import router as paymentin_router
+from src.apps.paymentin.exception_handlers import (
+    EXCEPTION_HANDLERS as PAYMENTIN_EXCEPTION_HANDLERS,
+)
 from src.core.database import init_db
 from src.core.logging_config import setup_logging
 
-# Создаём папку для логов
 Path("logs").mkdir(exist_ok=True)
 
-# Настраиваем логирование
 setup_logging()
 
 
@@ -31,7 +39,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-for exc_class, handler in EXCEPTION_HANDLERS.items():
+for exc_class, handler in HOOKS_EXCEPTION_HANDLERS.items():
+    app.add_exception_handler(exc_class, handler)
+
+for exc_class, handler in CUSTOMERORDER_EXCEPTION_HANDLERS.items():
+    app.add_exception_handler(exc_class, handler)
+
+for exc_class, handler in PAYMENTIN_EXCEPTION_HANDLERS.items():
     app.add_exception_handler(exc_class, handler)
 
 app.mount("/static", StaticFiles(directory="src/static"), name="static")
@@ -50,3 +64,5 @@ async def index(request: Request):
 
 app.include_router(ms_auth_router, prefix="/api/auth/ms", tags=["ms_auth"])
 app.include_router(hooks_router, prefix="/api/hooks", tags=["hooks"])
+app.include_router(customerorder_router, prefix="/api/customerorder", tags=["customerorder"])
+app.include_router(paymentin_router, prefix="/api/paymentin", tags=["paymentin"])

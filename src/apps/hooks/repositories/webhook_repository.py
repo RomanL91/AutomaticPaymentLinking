@@ -83,9 +83,9 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
         """
         stmt = select(WebhookSubscription).where(
             WebhookSubscription.payment_type == payment_type
-        )
+        ).order_by(WebhookSubscription.id.desc())
         result = await self._session.execute(stmt)
-        model = result.scalar_one_or_none()
+        model = result.scalars().first()
         
         return self._to_entity(model) if model else None
     
@@ -107,10 +107,11 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             Обновленная сущность или None если вебхук не найден
         """
         stmt = select(WebhookSubscription).where(
-            WebhookSubscription.payment_type == payment_type
-        )
+            WebhookSubscription.payment_type == payment_type,
+            WebhookSubscription.enabled == True,
+        ).order_by(WebhookSubscription.id.desc())
         result = await self._session.execute(stmt)
-        model = result.scalar_one_or_none()
+        model = result.scalars().first()
         
         if not model:
             return None
@@ -140,16 +141,6 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
         Returns:
             Словарь {payment_type: {enabled, document_type, link_type}}
         """
-        webhooks = await self.get_all()
-        result = {}
-        
-        for webhook in webhooks:
-            result[webhook.payment_type.value] = {
-                "enabled": webhook.enabled,
-                "document_type": webhook.document_type.value,
-                "link_type": webhook.link_type.value,
-            }
-        
         all_payment_types = [
             PaymentType.incoming_payment,
             PaymentType.incoming_order,
@@ -157,8 +148,22 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             PaymentType.outgoing_order,
         ]
         
+        result = {}
+        
         for pt in all_payment_types:
-            if pt.value not in result:
+            stmt = select(WebhookSubscription).where(
+                WebhookSubscription.payment_type == pt
+            ).order_by(WebhookSubscription.id.desc())
+            query_result = await self._session.execute(stmt)
+            model = query_result.scalars().first()
+            
+            if model:
+                result[pt.value] = {
+                    "enabled": model.enabled,
+                    "document_type": model.document_type.value,
+                    "link_type": model.link_type.value,
+                }
+            else:
                 result[pt.value] = {
                     "enabled": False,
                     "document_type": DocumentType.customerorder.value,
