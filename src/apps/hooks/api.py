@@ -86,7 +86,7 @@ async def receive_moysklad_webhook(
     service: WebhookSvcDep,
     paymentin_service: PaymentInSvcDep,
     customerorder_service: CustomerOrderSvcDep,
-    request_id: RequestIdQuery,
+    request_id: RequestIdQuery = None,
 ) -> Response:
     logger.info(
         "Получен вебхук МойСклад: requestId=%s, events=%d, uid=%s, moment=%s",
@@ -97,6 +97,7 @@ async def receive_moysklad_webhook(
     )
 
     await service.process_incoming_webhook(
+        request_id=request_id,
         payload=payload,
         paymentin_service=paymentin_service,
         customerorder_service=customerorder_service,

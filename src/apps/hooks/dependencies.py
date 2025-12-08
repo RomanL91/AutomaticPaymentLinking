@@ -26,4 +26,4 @@ async def get_webhook_service(
 
 UOWDep = Annotated[UnitOfWork, Depends(get_uow)]
 WebhookSvcDep = Annotated[WebhookService, Depends(get_webhook_service)]
-RequestIdQuery = Annotated[str | None, Query(default=None, alias="requestId")]
+RequestIdQuery = Annotated[str | None, Query(alias="requestId")]
