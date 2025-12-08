@@ -152,23 +152,59 @@ class WebhookService:
         
         result = await operation.execute()
         
-        if result.success and result.webhook_entity:
-            result.webhook_entity.payment_type = payment_type
-            result.webhook_entity.document_type = document_type
-            result.webhook_entity.link_type = link_type
-            saved_entity = await self._uow.webhooks.upsert(result.webhook_entity)
-            await self._uow.commit()
-            
-            logger.info(
-                "Webhook сохранен в БД: id=%s, ms_webhook_id=%s, enabled=%s, document_type=%s, link_type=%s",
-                saved_entity.id,
-                saved_entity.ms_webhook_id,
-                saved_entity.enabled,
-                saved_entity.document_type.value,
-                saved_entity.link_type.value,
-            )
-            
-            result.details["db_record_id"] = saved_entity.id
+        logger.info(
+            "Результат операции: operation=%s, success=%s, has_entity=%s",
+            result.operation,
+            result.success,
+            result.webhook_entity is not None,
+        )
+        
+        if result.success:
+            if result.webhook_entity:
+                result.webhook_entity.payment_type = payment_type
+                result.webhook_entity.document_type = document_type
+                result.webhook_entity.link_type = link_type
+                saved_entity = await self._uow.webhooks.upsert(result.webhook_entity)
+                await self._uow.commit()
+                
+                logger.info(
+                    "Webhook сохранен в БД: id=%s, ms_webhook_id=%s, enabled=%s, document_type=%s, link_type=%s",
+                    saved_entity.id,
+                    saved_entity.ms_webhook_id,
+                    saved_entity.enabled,
+                    saved_entity.document_type.value,
+                    saved_entity.link_type.value,
+                )
+                
+                result.details["db_record_id"] = saved_entity.id
+            else:
+                existing_db_entity = await self._uow.webhooks.get_by_payment_type(payment_type)
+                
+                if existing_db_entity:
+                    logger.info(
+                        "Webhook entity не вернулась из операции, но найдена в БД. "
+                        "Обновляем enabled=%s для payment_type=%s",
+                        enabled,
+                        payment_type.value,
+                    )
+                    existing_db_entity.enabled = enabled
+                    existing_db_entity.document_type = document_type
+                    existing_db_entity.link_type = link_type
+                    saved_entity = await self._uow.webhooks.update(existing_db_entity)
+                    await self._uow.commit()
+                    
+                    logger.info(
+                        "Webhook обновлен в БД: id=%s, enabled=%s",
+                        saved_entity.id,
+                        saved_entity.enabled,
+                    )
+                    
+                    result.details["db_record_id"] = saved_entity.id
+                else:
+                    logger.warning(
+                        "Webhook entity не вернулась из операции и не найдена в БД для payment_type=%s",
+                        payment_type.value,
+                    )
         
         return result
     
@@ -203,7 +239,6 @@ class WebhookService:
                 event.updatedFields,
             )
             
-            # Потенциальное место стратегий/команд (пришло такое - делай так).
             if event.meta.type == "paymentin" and event.action == "CREATE":
                 subscription = await self._uow.webhooks.get_active_subscription_for_event(
                     account_id=event.accountId,

@@ -41,6 +41,9 @@ class EnableWebhookOperation(WebhookOperation):
     """Операция включения вебхука."""
     
     async def execute(self) -> WebhookOperationResult:
+        logger.info("Выполнение EnableWebhookOperation: entity_type=%s, action=%s, url=%s",
+                    self._config.entity_type, self._config.action, self._config.url)
+        
         existing = await self._client.find_webhook(
             entity_type=self._config.entity_type,
             action=self._config.action,
@@ -48,10 +51,16 @@ class EnableWebhookOperation(WebhookOperation):
         )
         
         if not existing:
+            logger.info("Существующий вебхук не найден, создаем новый")
             return await self._create_new_webhook()
+        
+        logger.info("Найден существующий вебхук: id=%s, enabled=%s", 
+                    existing.get("id"), existing.get("enabled"))
         
         if existing.get("enabled") is True:
             return self._already_enabled_result(existing)
+        
+        logger.info("Вебхук найден но выключен, включаем")
         
         return await self._enable_existing_webhook(existing)
     
