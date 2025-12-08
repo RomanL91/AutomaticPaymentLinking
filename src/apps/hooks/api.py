@@ -1,14 +1,21 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.database import get_session
+
+from ..customerorder.dependencies import CustomerOrderSvcDep, get_customerorder_service
+from ..paymentin.dependencies import PaymentInSvcDep, get_paymentin_service
 from .dependencies import WebhookSvcDep
+from .models import WebhookSubscription
 from .schemas import (
     AutoLinkTogglePayload,
     MySkladWebhookPayload,
     UpdateLinkSettingsPayload,
     WebhookStatusResponse,
 )
+from .services.webhook_handler import WebhookHandler
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +87,9 @@ async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookSvcDe
 @router.post("/moysklad/webhook", status_code=204)
 async def receive_moysklad_webhook(
     payload: MySkladWebhookPayload,
+    paymentin_service: PaymentInSvcDep,
+    customerorder_service: CustomerOrderSvcDep,
+    session: AsyncSession = Depends(get_session),
     request_id: str | None = Query(default=None, alias="requestId"),
 ):
     if not request_id:
@@ -97,6 +107,8 @@ async def receive_moysklad_webhook(
         payload.auditContext.moment,
     )
 
+    handler = WebhookHandler(paymentin_service, customerorder_service)
+
     for event in payload.events:
         logger.info(
             "Событие вебхука: type=%s, action=%s, href=%s, accountId=%s, updatedFields=%s",
@@ -106,5 +118,31 @@ async def receive_moysklad_webhook(
             event.accountId,
             event.updatedFields,
         )
+
+        if event.meta.type == "paymentin" and event.action == "CREATE":
+            account_id = event.accountId
+
+            from sqlalchemy import select
+            stmt = select(WebhookSubscription).where(
+                WebhookSubscription.ms_account_id == account_id,
+                WebhookSubscription.enabled == True,
+            )
+            result = await session.execute(stmt)
+            subscription = result.scalar_one_or_none()
+
+            if subscription:
+                result = await handler.handle_paymentin_create(
+                    event.meta.href, subscription
+                )
+                logger.info(
+                    "Результат обработки платежа: success=%s, message=%s",
+                    result["success"],
+                    result["message"],
+                )
+            else:
+                logger.warning(
+                    "Активная подписка не найдена для аккаунта %s",
+                    account_id,
+                )
 
     return Response(status_code=204)

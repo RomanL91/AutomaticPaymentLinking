@@ -6,6 +6,7 @@ from typing import List, Optional
 from ...ms_auth.services.auth_service import MySkladAuthService
 from ..domain.entities import CustomerOrderEntity
 from ..domain.value_objects import CustomerOrderFilter
+from ..exceptions import CustomerOrderNotFoundError
 from .customerorder_client import CustomerOrderClient
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,23 @@ class CustomerOrderService:
         )
         
         return entities
+    
+    async def find_by_name_and_agent(
+        self, name: str, agent_id: str
+    ) -> CustomerOrderEntity:
+        """Найти заказ по номеру и контрагенту."""
+        filter_str = (
+            f"agent=https://api.moysklad.ru/api/remap/1.2/entity/counterparty/{agent_id};"
+            f"name={name}"
+        )
+        orders_data = await self._client.search(filter_str=filter_str, limit=1)
+        
+        if not orders_data:
+            raise CustomerOrderNotFoundError(
+                f"Заказ с номером '{name}' для контрагента {agent_id} не найден"
+            )
+        
+        return self._to_entity(orders_data[0])
     
     @staticmethod
     def _to_entity(data: dict) -> CustomerOrderEntity:
