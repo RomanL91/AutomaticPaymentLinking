@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Response
 
 from ..customerorder.dependencies import CustomerOrderSvcDep
+from ..invoiceout.dependencies import InvoiceOutSvcDep
 from ..paymentin.dependencies import PaymentInSvcDep
 from .dependencies import RequestIdQuery, WebhookSvcDep
 from .schemas import (
@@ -86,6 +87,7 @@ async def receive_moysklad_webhook(
     service: WebhookSvcDep,
     paymentin_service: PaymentInSvcDep,
     customerorder_service: CustomerOrderSvcDep,
+    invoiceout_service: InvoiceOutSvcDep,
     request_id: RequestIdQuery = None,
 ) -> Response:
     logger.info(
@@ -101,6 +103,7 @@ async def receive_moysklad_webhook(
         payload=payload,
         paymentin_service=paymentin_service,
         customerorder_service=customerorder_service,
+        invoiceout_service=invoiceout_service,
     )
 
     return Response(status_code=204)

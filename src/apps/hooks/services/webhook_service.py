@@ -217,6 +217,7 @@ class WebhookService:
         payload,
         paymentin_service,
         customerorder_service,
+        invoiceout_service,
     ) -> None:
         """
         Обработать входящий webhook от МойСклад.
@@ -229,8 +230,15 @@ class WebhookService:
         """
         if not request_id:
             raise MissingRequestIdError("requestId обязателен")
+        
+        if invoiceout_service is None:
+            raise ValueError("InvoiceOutService dependency is required")
 
-        handler = WebhookHandler(paymentin_service, customerorder_service)
+        handler = WebhookHandler(
+            paymentin_service,
+            customerorder_service,
+            invoiceout_service,
+        )
         
         for event in payload.events:
             logger.info(
