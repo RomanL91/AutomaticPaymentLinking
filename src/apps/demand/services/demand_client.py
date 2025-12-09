@@ -1,6 +1,7 @@
 """Клиент для работы с API отгрузок (demand) МойСклад."""
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -114,10 +115,18 @@ class DemandClient:
     async def search_by_agent(
         self,
         agent_id: str,
+        date_from: Optional[datetime] = None,
+        limit: int = 100,
+        order: str = "moment,asc"
     ) -> List[Dict[str, Any]]:
         """Поиск отгрузок по контрагенту."""
 
-        filter_str = (
-            f"agent=https://api.moysklad.ru/api/remap/1.2/entity/counterparty/{agent_id}"
-        )
-        return await self.search(filter_str=filter_str, order="moment,asc")
+        filter_parts = [
+            f"agent=https://api.moysklad.ru/api/remap/1.2/entity/counterparty/{agent_id}",
+        ]
+
+        if date_from:
+            filter_parts.append(f"moment>={date_from.isoformat()}")
+
+        filter_str = ";".join(filter_parts)
+        return await self.search(filter_str=filter_str, order=order, limit=limit)

@@ -140,10 +140,12 @@
 
             const documentRadios = tab.querySelectorAll('.js-document-type');
             const linkRadios = tab.querySelectorAll('.js-link-type');
+            const priorityRadios = tab.querySelectorAll('.js-document-priority');
             const checkbox = tab.querySelector('.js-auto-link-toggle');
 
             documentRadios.forEach(radio => radio.disabled = disabled);
             linkRadios.forEach(radio => radio.disabled = disabled);
+            priorityRadios.forEach(radio => radio.disabled = disabled);
             if (checkbox) checkbox.disabled = disabled;
         }
 
@@ -153,14 +155,16 @@
 
             const documentTypeRadio = tab.querySelector('.js-document-type:checked');
             const linkTypeRadio = tab.querySelector('.js-link-type:checked');
+            const documentPriorityRadio = tab.querySelector('.js-document-priority:checked');
 
             return {
                 document_type: documentTypeRadio ? documentTypeRadio.value : 'customerorder',
-                link_type: linkTypeRadio ? linkTypeRadio.value : 'sum_and_counterparty'
+                link_type: linkTypeRadio ? linkTypeRadio.value : 'sum_and_counterparty',
+                document_priority: documentPriorityRadio ? documentPriorityRadio.value : 'oldest_first'
             };
         }
 
-        function setTabSettings(paymentType, documentType, linkType) {
+        function setTabSettings(paymentType, documentType, linkType, documentPriority) {
             const tab = document.querySelector(`.js-tabs-item[data-payment-type="${paymentType}"]`);
             if (!tab) return;
 
@@ -169,6 +173,9 @@
 
             const linkRadio = tab.querySelector(`.js-link-type[value="${linkType}"]`);
             if (linkRadio) linkRadio.checked = true;
+
+            const priorityRadio = tab.querySelector(`.js-document-priority[value="${documentPriority || 'oldest_first'}"]`);
+            if (priorityRadio) priorityRadio.checked = true;
         }
 
         function loadWebhookStatus() {
@@ -190,14 +197,17 @@
                         
                         if (webhookData) {
                             checkbox.checked = webhookData.enabled;
+
+                            const documentPriority = webhookData.document_priority || 'oldest_first';
                             
                             setTabSettings(
                                 paymentType,
                                 webhookData.document_type,
-                                webhookData.link_type
+                                webhookData.link_type,
+                                documentPriority
                             );
                             
-                            console.log(`${paymentType}: enabled=${webhookData.enabled}, document_type=${webhookData.document_type}, link_type=${webhookData.link_type}`);
+                            console.log(`${paymentType}: enabled=${webhookData.enabled}, document_type=${webhookData.document_type}, link_type=${webhookData.link_type}, priority=${documentPriority}`);
                         }
                         
                         checkbox.disabled = false;
@@ -232,7 +242,8 @@
                 body: JSON.stringify({
                     payment_type: paymentType,
                     document_type: settings.document_type,
-                    link_type: settings.link_type
+                    link_type: settings.link_type,
+                    document_priority: settings.document_priority
                 })
             })
             .then(response => {
@@ -282,7 +293,8 @@
                     payment_type: paymentType,
                     enabled: enabled,
                     document_type: settings.document_type,
-                    link_type: settings.link_type
+                    link_type: settings.link_type,
+                    document_priority: settings.document_priority
                 })
             })
             .then(response => {
@@ -316,7 +328,7 @@
             });
         });
 
-        document.querySelectorAll('.js-document-type, .js-link-type').forEach((radio) => {
+        document.querySelectorAll('.js-document-type, .js-link-type, .js-document-priority').forEach((radio) => {
             const paymentType = radio.dataset.paymentType;
             
             const debouncedUpdate = debounce(function() {

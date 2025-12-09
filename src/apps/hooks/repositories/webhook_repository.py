@@ -8,13 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..domain.entities import WebhookEntity
 from ..exceptions import RepositoryError
 from ..models import WebhookSubscription
-from ..schemas import DocumentType, LinkType, PaymentType
+from ..schemas import DocumentPriority, DocumentType, LinkType, PaymentType
 from .base import AbstractRepository
 
 
 class WebhookRepository(AbstractRepository[WebhookEntity]):
     """Репозиторий для управления вебхуками."""
-    
+
     def __init__(self, session: AsyncSession) -> None:
         """
         Инициализировать репозиторий вебхуков.
@@ -23,11 +23,11 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             session: Асинхронная сессия SQLAlchemy
         """
         super().__init__(session)
-    
+
     async def get_by_id(self, entity_id: int) -> Optional[WebhookEntity]:
         """
         Получить вебхук по ID.
-        
+
         Args:
             entity_id: ID вебхука
             
@@ -123,6 +123,7 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
         payment_type: PaymentType,
         document_type: DocumentType,
         link_type: LinkType,
+        document_priority: DocumentPriority,
     ) -> Optional[WebhookEntity]:
         """
         Обновить настройки привязки для существующего вебхука.
@@ -147,6 +148,7 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
         
         model.document_type = document_type
         model.link_type = link_type
+        model.document_priority = document_priority
         
         await self._session.flush()
         await self._session.refresh(model)
@@ -191,12 +193,14 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
                     "enabled": model.enabled,
                     "document_type": model.document_type.value,
                     "link_type": model.link_type.value,
+                    "document_priority": model.document_priority.value,
                 }
             else:
                 result[pt.value] = {
                     "enabled": False,
                     "document_type": DocumentType.customerorder.value,
                     "link_type": LinkType.sum_and_counterparty.value,
+                    "document_priority": DocumentPriority.oldest_first.value,
                 }
         
         return result
@@ -260,6 +264,7 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             model.enabled = entity.enabled
             model.document_type = entity.document_type
             model.link_type = entity.link_type
+            model.document_priority = entity.document_priority
             
             await self._session.flush()
             await self._session.refresh(model)

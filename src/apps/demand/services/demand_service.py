@@ -1,6 +1,7 @@
 """Сервис для работы с отгрузками (demand)."""
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from ...ms_auth.services.auth_service import MySkladAuthService
@@ -23,6 +24,7 @@ class DemandService:
         agent_id: str,
         payment_sum: float,
         search_by_sum: bool = True,
+        priritize_oldest: bool = True,
     ) -> List[DemandEntity]:
         """Найти отгрузки для привязки платежа."""
 
@@ -32,7 +34,12 @@ class DemandService:
                 sum_value=payment_sum,
             )
         else:
-            demands_data = await self._client.search_by_agent(agent_id=agent_id)
+            demands_data = await self._client.search_by_agent(
+                agent_id=agent_id,
+                date_from=datetime.now(timezone.utc) - timedelta(days=60),
+                limit=10, # "магические" числа
+                order="moment,asc" if priritize_oldest else "moment,desc"
+            )
 
         entities = [self._to_entity(data) for data in demands_data]
         entities = [entity for entity in entities if not entity.is_fully_paid()]

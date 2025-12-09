@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from ..schemas import DocumentType, LinkType, PaymentType
+from ..schemas import DocumentPriority, DocumentType, LinkType, PaymentType
 
 
 @dataclass
@@ -19,6 +19,7 @@ class WebhookEntity:
     enabled: bool
     document_type: DocumentType = DocumentType.customerorder
     link_type: LinkType = LinkType.sum_and_counterparty
+    document_priority: DocumentPriority = DocumentPriority.oldest_first
     id: Optional[int] = None
     ms_href: Optional[str] = None
     ms_account_id: Optional[str] = None

@@ -24,23 +24,31 @@ class LinkType(str, Enum):
     payment_purpose_mask = "payment_purpose_mask"          # По маске назначения платежа
 
 
+class DocumentPriority(str, Enum):
+    oldest_first = "oldest_first"       # Сначала старые документы
+    newest_first = "newest_first"       # Сначала новые документы
+
+
 class AutoLinkTogglePayload(BaseModel):
     payment_type: PaymentType
     enabled: bool
     document_type: Optional[DocumentType] = DocumentType.customerorder
     link_type: Optional[LinkType] = LinkType.sum_and_counterparty
+    document_priority: Optional[DocumentPriority] = DocumentPriority.oldest_first
 
 
 class UpdateLinkSettingsPayload(BaseModel):
     payment_type: PaymentType
     document_type: DocumentType
     link_type: LinkType
+    document_priority: Optional[DocumentPriority] = DocumentPriority.oldest_first
 
 
 class WebhookStatusItem(BaseModel):
     enabled: bool
     document_type: DocumentType
     link_type: LinkType
+    document_priority: Optional[DocumentPriority] = DocumentPriority.oldest_first
 
 
 class WebhookStatusResponse(BaseModel):

@@ -1,6 +1,7 @@
 """Клиент для работы с API заказов покупателя МойСклад."""
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -212,23 +213,28 @@ class CustomerOrderClient:
         self,
         agent_id: str,
         only_unpaid: bool = True,
+        date_from: Optional[datetime] = None,
+        limit: int = 100,
+        order: str = "moment,asc",
     ) -> List[Dict[str, Any]]:
         """
         Поиск заказов по контрагенту.
-        
+
         Args:
             agent_id: ID контрагента
             only_unpaid: Искать только неоплаченные
-            
+            date_from: Минимальная дата документа
+            limit: Количество документов
+            order: Порядок сортировки
         Returns:
             Список заказов
         """
         filter_parts = [
             f"agent=https://api.moysklad.ru/api/remap/1.2/entity/counterparty/{agent_id}",
         ]
-        
-        if only_unpaid:
-            filter_parts.append("payedSum<sum")
-        
+
+        if date_from:
+            filter_parts.append(f"moment>={date_from.isoformat()}")
+
         filter_str = ";".join(filter_parts)
-        return await self.search(filter_str=filter_str, order="moment,asc")
+        return await self.search(filter_str=filter_str, order=order, limit=limit)

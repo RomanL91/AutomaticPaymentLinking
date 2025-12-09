@@ -4,7 +4,7 @@ from sqlalchemy import Index, String
 
 from src.core.models import Base
 
-from .schemas import DocumentType, LinkType, PaymentType
+from .schemas import DocumentPriority, DocumentType, LinkType, PaymentType
 
 
 class WebhookSubscription(Base):
@@ -37,6 +37,13 @@ class WebhookSubscription(Base):
         nullable=False,
         default=LinkType.sum_and_counterparty,
         server_default="sum_and_counterparty",
+    )
+
+    document_priority = Column(
+        SAEnum(DocumentPriority, name="document_priority_enum"),
+        nullable=False,
+        default=DocumentPriority.oldest_first,
+        server_default="oldest_first",
     )
 
     __table_args__ = (

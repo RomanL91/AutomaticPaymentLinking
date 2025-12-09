@@ -1,6 +1,7 @@
 """Сервис для работы с заказами покупателя."""
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from ...ms_auth.services.auth_service import MySkladAuthService
@@ -47,6 +48,7 @@ class CustomerOrderService:
         agent_id: str,
         payment_sum: float,
         search_by_sum: bool = True,
+        prioritize_oldest: bool = True,
     ) -> List[CustomerOrderEntity]:
         """
         Найти заказы для привязки платежа.
@@ -68,6 +70,9 @@ class CustomerOrderService:
             orders_data = await self._client.search_by_agent(
                 agent_id=agent_id,
                 only_unpaid=True,
+                date_from=datetime.now(timezone.utc) - timedelta(days=60),
+                limit=10,
+                order="moment,asc" if prioritize_oldest else "moment,desc",
             )
         
         entities = [self._to_entity(data) for data in orders_data]

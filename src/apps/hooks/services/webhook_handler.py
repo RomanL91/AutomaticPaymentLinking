@@ -12,7 +12,7 @@ from ...invoiceout.services.invoiceout_service import InvoiceOutService
 from ...paymentin.exceptions import PaymentInNotFoundError
 from ...paymentin.services.paymentin_service import PaymentInService
 from ..domain.entities import WebhookEntity
-from ..schemas import DocumentType, LinkType
+from ..schemas import DocumentPriority, DocumentType, LinkType
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +46,24 @@ class WebhookHandler:
                 payment.sum,
                 payment.agent_id,
             )
-            
-            document = await self._find_document_for_payment(
-                payment=payment,
-                document_type=subscription.document_type,
-                link_type=subscription.link_type,
-            )
 
-            if not document:
+            if subscription.link_type == LinkType.counterparty:
+                document, linked_sum = await self._link_payment_by_counterparty(
+                    payment=payment,
+                    document_type=subscription.document_type,
+                    prioritize_oldest=(
+                        subscription.document_priority == DocumentPriority.oldest_first
+                    ),
+                )
+            else:
+                document = await self._find_document_for_payment(
+                    payment=payment,
+                    document_type=subscription.document_type,
+                    link_type=subscription.link_type,
+                )
+                linked_sum = payment.sum if document else 0
+
+            if not document or linked_sum <= 0:
                 logger.warning(
                     "Не найден документ для платежа %s (agent=%s, sum=%s, strategy=%s, type=%s)",
                     payment.id,
@@ -67,12 +77,13 @@ class WebhookHandler:
                     "message": "Не найден подходящий документ для привязки",
                 }
 
-            await self.paymentin_service.link_to_document(
-                payment_id=payment.id,
-                document_meta_href=document.meta_href,
-                linked_sum=payment.sum,
-            )
-            
+            if subscription.link_type != LinkType.counterparty:
+                await self.paymentin_service.link_to_document(
+                    payment_id=payment.id,
+                    document_meta_href=document.meta_href,
+                    linked_sum=payment.sum,
+                )
+
             logger.info(
                 "✓ Платеж %s привязан к %s %s (сумма: %s)",
                 payment.id,
@@ -126,6 +137,92 @@ class WebhookHandler:
 
         return None
 
+    async def _link_payment_by_counterparty(
+        self,
+        payment,
+        document_type: DocumentType,
+        prioritize_oldest: bool,
+    ):
+        """Привязать платеж по контрагенту к нескольким документам по очереди."""
+
+        documents = await self._get_documents_by_counterparty(
+            payment=payment,
+            document_type=document_type,
+            prioritize_oldest=prioritize_oldest,
+        )
+
+        if not documents:
+            return None, 0
+
+        remaining_sum = payment.sum
+        last_linked_document = None
+
+        for document in documents:
+            unpaid_amount = document.get_unpaid_amount()
+            if unpaid_amount <= 0:
+                continue
+
+            linked_sum = min(unpaid_amount, remaining_sum)
+
+            if linked_sum <= 0:
+                break
+
+            await self.paymentin_service.link_to_document(
+                payment_id=payment.id,
+                document_meta_href=document.meta_href,
+                linked_sum=linked_sum,
+            )
+
+            logger.info(
+                "Часть платежа %s привязана к %s %s: linked_sum=%s, unpaid_before=%s, remaining_payment=%s",
+                payment.id,
+                document_type.value,
+                document.name,
+                linked_sum,
+                unpaid_amount,
+                remaining_sum - linked_sum,
+            )
+
+            remaining_sum -= linked_sum
+            last_linked_document = document
+
+            if remaining_sum <= 0:
+                break
+
+        total_linked = payment.sum - remaining_sum
+        return last_linked_document, total_linked
+
+    async def _get_documents_by_counterparty(
+        self, payment, document_type: DocumentType, prioritize_oldest: bool
+    ):
+        """Получить список документов для привязки по контрагенту."""
+
+        if document_type == DocumentType.customerorder:
+            return await self.customerorder_service.find_for_payment(
+                agent_id=payment.agent_id,
+                payment_sum=payment.sum,
+                search_by_sum=False,
+                prioritize_oldest=prioritize_oldest,
+            )
+
+        if document_type == DocumentType.invoiceout:
+            return await self.invoiceout_service.find_for_payment(
+                agent_id=payment.agent_id,
+                payment_sum=payment.sum,
+                search_by_sum=False,
+                prioritize_oldest=prioritize_oldest,
+            )
+
+        if document_type == DocumentType.demand:
+            return await self.demand_service.find_for_payment(
+                agent_id=payment.agent_id,
+                payment_sum=payment.sum,
+                search_by_sum=False,
+                prioritize_oldest=prioritize_oldest,
+            )
+
+        return []
+
     async def _find_order_for_payment(self, payment, link_type: LinkType):
         """Найти подходящий заказ в зависимости от стратегии."""
 
@@ -147,27 +244,6 @@ class WebhookHandler:
         
         elif link_type == LinkType.payment_purpose_mask:
             return await self._find_order_by_purpose_mask(payment)
-
-        return None
-
-    async def _find_invoice_for_payment(self, payment, link_type: LinkType):
-        """Найти подходящий счет покупателю для платежа."""
-
-        if link_type == LinkType.sum_and_counterparty:
-            invoices = await self.invoiceout_service.find_for_payment(
-                agent_id=payment.agent_id,
-                payment_sum=payment.sum,
-                search_by_sum=True,
-            )
-            return invoices[0] if invoices else None
-
-        if link_type == LinkType.counterparty:
-            invoices = await self.invoiceout_service.find_for_payment(
-                agent_id=payment.agent_id,
-                payment_sum=payment.sum,
-                search_by_sum=False,
-            )
-            return invoices[0] if invoices else None
 
         return None
 

@@ -1,6 +1,7 @@
 """Клиент для работы с API счетов покупателю МойСклад."""
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -111,6 +112,9 @@ class InvoiceOutClient:
         self,
         agent_id: str,
         only_unpaid: bool = True,
+        date_from: Optional[datetime] = None,
+        limit: int = 100,
+        order: str = "moment,asc",
     ) -> List[Dict[str, Any]]:
         """Поиск счетов по контрагенту."""
         filter_parts = [
@@ -120,5 +124,8 @@ class InvoiceOutClient:
         if only_unpaid:
             filter_parts.append("payedSum<sum")
 
+        if date_from:
+            filter_parts.append(f"moment>={date_from.isoformat()}")
+
         filter_str = ";".join(filter_parts)
-        return await self.search(filter_str=filter_str, order="moment,asc")
+        return await self.search(filter_str=filter_str, order=order, limit=limit)

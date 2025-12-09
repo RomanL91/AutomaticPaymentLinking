@@ -32,29 +32,32 @@ async def update_link_settings(
     service: WebhookSvcDep,
 ):
     logger.info(
-        "Обновление настроек привязки: payment_type=%s, document_type=%s, link_type=%s",
+        "Обновление настроек привязки: payment_type=%s, document_type=%s, link_type=%s, priority=%s",
         payload.payment_type,
         payload.document_type,
         payload.link_type,
+        payload.document_priority,
     )
-    
+
     result = await service.update_link_settings(
         payment_type=payload.payment_type,
         document_type=payload.document_type,
         link_type=payload.link_type,
+        document_priority=payload.document_priority,
     )
-    
+
     return result
 
 
 @router.post("/auto-link-toggle")
 async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookSvcDep):
     logger.info(
-        "UI toggle: payment_type=%s, enabled=%s, document_type=%s, link_type=%s",
+        "UI toggle: payment_type=%s, enabled=%s, document_type=%s, link_type=%s, priority=%s",
         payload.payment_type,
         payload.enabled,
         payload.document_type,
         payload.link_type,
+        payload.document_priority,
     )
 
     result = await service.toggle_webhook(
@@ -62,6 +65,7 @@ async def auto_link_toggle(payload: AutoLinkTogglePayload, service: WebhookSvcDe
         enabled=payload.enabled,
         document_type=payload.document_type,
         link_type=payload.link_type,
+        document_priority=payload.document_priority,
     )
    
     if result.is_skipped():

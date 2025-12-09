@@ -9,7 +9,13 @@ from ...ms_auth.services.auth_service import MySkladAuthService
 from ..domain.entities import WebhookOperationResult
 from ..domain.value_objects import WebhookConfiguration
 from ..exceptions import MissingRequestIdError
-from ..schemas import DocumentType, LinkType, PaymentType, WebhookStatusItem
+from ..schemas import (
+    DocumentPriority,
+    DocumentType,
+    LinkType,
+    PaymentType,
+    WebhookStatusItem,
+)
 from ..uow.unit_of_work import UnitOfWork
 from .moysklad_client import MoySkladClient
 from .webhook_handler import WebhookHandler
@@ -56,6 +62,7 @@ class WebhookService:
                 enabled=data["enabled"],
                 document_type=DocumentType(data["document_type"]),
                 link_type=LinkType(data["link_type"]),
+                document_priority=DocumentPriority(data["document_priority"]),
             )
         
         logger.debug("Статус вебхуков: %s", result)
@@ -66,6 +73,7 @@ class WebhookService:
         payment_type: PaymentType,
         document_type: DocumentType,
         link_type: LinkType,
+        document_priority: DocumentPriority,
     ) -> Dict[str, str]:
         """
         Обновить настройки привязки БЕЗ обращения к МойСклад API.
@@ -82,8 +90,9 @@ class WebhookService:
             payment_type=payment_type,
             document_type=document_type,
             link_type=link_type,
+            document_priority=document_priority,
         )
-        
+
         if not updated:
             logger.warning(
                 "Вебхук %s не найден для обновления настроек",
@@ -108,6 +117,7 @@ class WebhookService:
             "payment_type": payment_type.value,
             "document_type": document_type.value,
             "link_type": link_type.value,
+            "document_priority": document_priority.value,
         }
     
     async def toggle_webhook(
@@ -116,6 +126,7 @@ class WebhookService:
         enabled: bool,
         document_type: DocumentType = DocumentType.customerorder,
         link_type: LinkType = LinkType.sum_and_counterparty,
+        document_priority: DocumentPriority = DocumentPriority.oldest_first,
     ) -> WebhookOperationResult:
         webhook_url = settings.ms_webhook_url
         
@@ -167,6 +178,7 @@ class WebhookService:
                 result.webhook_entity.payment_type = payment_type
                 result.webhook_entity.document_type = document_type
                 result.webhook_entity.link_type = link_type
+                result.webhook_entity.document_priority = document_priority
                 saved_entity = await self._uow.webhooks.upsert(result.webhook_entity)
                 await self._uow.commit()
                 
@@ -193,6 +205,7 @@ class WebhookService:
                     existing_db_entity.enabled = enabled
                     existing_db_entity.document_type = document_type
                     existing_db_entity.link_type = link_type
+                    existing_db_entity.document_priority = document_priority
                     saved_entity = await self._uow.webhooks.update(existing_db_entity)
                     await self._uow.commit()
                     

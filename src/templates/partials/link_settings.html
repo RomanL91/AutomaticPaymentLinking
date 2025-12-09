@@ -78,4 +78,31 @@
             <span class="radio__text">По маске назначения платежа</span>
         </label>
     </div>
+
+    <div style="margin-top: 16px;">
+        <div class="caption" style="margin-bottom: 8px;">Приоритет документов:</div>
+        <label class="radio option">
+            <input
+                class="radio__input js-document-priority"
+                type="radio"
+                name="document_priority_{{ payment_type }}"
+                value="oldest_first"
+                data-payment-type="{{ payment_type }}"
+                checked
+            >
+            <span class="radio__box"></span>
+            <span class="radio__text">Сначала старые документы</span>
+        </label>
+        <label class="radio option">
+            <input
+                class="radio__input js-document-priority"
+                type="radio"
+                name="document_priority_{{ payment_type }}"
+                value="newest_first"
+                data-payment-type="{{ payment_type }}"
+            >
+            <span class="radio__box"></span>
+            <span class="radio__text">Сначала новые документы</span>
+        </label>
+    </div>
 </div>
