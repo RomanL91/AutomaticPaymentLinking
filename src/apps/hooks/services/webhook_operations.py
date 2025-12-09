@@ -6,7 +6,6 @@ from typing import Dict
 
 from ..domain.entities import WebhookEntity, WebhookOperationResult
 from ..domain.value_objects import WebhookConfiguration
-from ..exceptions import MoySkladAPIError
 from .moysklad_client import MoySkladClient
 
 logger = logging.getLogger(__name__)
@@ -74,6 +73,23 @@ class WebhookOperation(ABC):
 
         return webhook
     
+    def _webhook_data_to_entity(self, webhook_data: Dict, *, enabled_fallback: bool | None = None) -> WebhookEntity:
+        """Преобразовать данные API в доменную сущность с учетом текущей конфигурации."""
+
+        meta = webhook_data.get("meta") or {}
+        enabled_value = webhook_data.get("enabled", enabled_fallback)
+
+        return WebhookEntity(
+            payment_type=self._config.payment_type,
+            entity_type=webhook_data.get("entityType", ""),
+            action=webhook_data.get("action", ""),
+            url=webhook_data.get("url", ""),
+            ms_webhook_id=webhook_data.get("id", ""),
+            ms_href=meta.get("href"),
+            ms_account_id=webhook_data.get("accountId"),
+            enabled=bool(enabled_value) if enabled_value is not None else False,
+        )
+    
     @abstractmethod
     async def execute(self) -> WebhookOperationResult:
         """
@@ -105,11 +121,20 @@ class EnableWebhookOperation(WebhookOperation):
             logger.info("Существующий вебхук не найден, создаем новый")
             return await self._create_new_webhook()
         
-        logger.info("Найден существующий вебхук: id=%s, enabled=%s", 
-                    existing.get("id"), existing.get("enabled"))
-        
-        if existing.get("enabled") is True:
+        logger.info(
+            "Найден существующий вебхук: id=%s, enabled=%s",
+            existing.get("id"),
+            existing.get("enabled"),
+        )
+
+        url_matches = existing.get("url") == self._config.url
+        enabled = existing.get("enabled") is True
+
+        if url_matches and enabled:
             return self._already_enabled_result(existing)
+        
+        if not url_matches:
+            return await self._update_url_and_enable(existing)
         
         logger.info("Вебхук найден но выключен, включаем")
         
@@ -123,7 +148,7 @@ class EnableWebhookOperation(WebhookOperation):
             url=self._config.url,
         )
         
-        entity = self._webhook_data_to_entity(webhook_data)
+        entity = self._webhook_data_to_entity(webhook_data, enabled_fallback=True)
         logger.info("Создан новый вебхук: %s", entity.ms_webhook_id)
         
         return WebhookOperationResult(
@@ -134,12 +159,12 @@ class EnableWebhookOperation(WebhookOperation):
     
     async def _enable_existing_webhook(self, existing: Dict) -> WebhookOperationResult:
         """Активировать существующий вебхук."""
-        updated = await self._client.update_webhook_enabled(
+        updated = await self._client.update_webhook(
             webhook_data=existing,
             enabled=True,
         )
         
-        entity = self._webhook_data_to_entity(updated)
+        entity = self._webhook_data_to_entity(updated, enabled_fallback=True)
         logger.info("Вебхук включен: %s", entity.ms_webhook_id)
         
         return WebhookOperationResult(
@@ -148,40 +173,36 @@ class EnableWebhookOperation(WebhookOperation):
             webhook_entity=entity,
         )
     
+    async def _update_url_and_enable(self, existing: Dict) -> WebhookOperationResult:
+        """Обновить url вебхука и включить его."""
+        updated = await self._client.update_webhook(
+            webhook_data=existing,
+            enabled=True,
+            url=self._config.url,
+        )
+
+        entity = self._webhook_data_to_entity(updated, enabled_fallback=True)
+        logger.info(
+            "Вебхук url обновлен и включен: %s (url=%s)",
+            entity.ms_webhook_id,
+            entity.url,
+        )
+
+        return WebhookOperationResult(
+            operation="url_updated_and_enabled",
+            success=True,
+            webhook_entity=entity,
+        )
+
+    
     def _already_enabled_result(self, existing: Dict) -> WebhookOperationResult:
         """Вебхук уже включен."""
-        entity = self._webhook_data_to_entity(existing)
+        entity = self._webhook_data_to_entity(existing, enabled_fallback=True)
         
         return WebhookOperationResult(
             operation="already_enabled",
             success=True,
             webhook_entity=entity,
-        )
-    
-    @staticmethod
-    def _webhook_data_to_entity(webhook_data: Dict) -> WebhookEntity:
-        """
-        Преобразовать данные API в доменную сущность.
-        
-        Args:
-            webhook_data: Данные вебхука из API
-            
-        Returns:
-            Доменная сущность
-        """
-        from ..schemas import PaymentType
-        
-        meta = webhook_data.get("meta") or {}
-        
-        return WebhookEntity(
-            payment_type=PaymentType.incoming_payment,
-            entity_type=webhook_data.get("entityType", ""),
-            action=webhook_data.get("action", ""),
-            url=webhook_data.get("url", ""),
-            ms_webhook_id=webhook_data.get("id", ""),
-            ms_href=meta.get("href"),
-            ms_account_id=webhook_data.get("accountId"),
-            enabled=bool(webhook_data.get("enabled", True)),
         )
 
 
@@ -208,25 +229,13 @@ class DisableWebhookOperation(WebhookOperation):
     
     async def _disable_existing_webhook(self, existing: Dict) -> WebhookOperationResult:
         """Деактивировать существующий вебхук."""
-        updated = await self._client.update_webhook_enabled(
+        updated = await self._client.update_webhook(
             webhook_data=existing,
             enabled=False,
         )
-        
-        from ..schemas import PaymentType
-        meta = updated.get("meta") or {}
-        
-        entity = WebhookEntity(
-            payment_type=PaymentType.incoming_payment,
-            entity_type=updated.get("entityType", ""),
-            action=updated.get("action", ""),
-            url=updated.get("url", ""),
-            ms_webhook_id=updated.get("id", ""),
-            ms_href=meta.get("href"),
-            ms_account_id=updated.get("accountId"),
-            enabled=bool(updated.get("enabled", False)),
-        )
-        
+
+        entity = self._webhook_data_to_entity(updated, enabled_fallback=False)
+
         logger.info("Вебхук выключен: %s", entity.ms_webhook_id)
         
         return WebhookOperationResult(
@@ -245,20 +254,9 @@ class DisableWebhookOperation(WebhookOperation):
     
     def _already_disabled_result(self, existing: Dict) -> WebhookOperationResult:
         """Вебхук уже отключен."""
-        from ..schemas import PaymentType
-        meta = existing.get("meta") or {}
         
-        entity = WebhookEntity(
-            payment_type=PaymentType.incoming_payment,
-            entity_type=existing.get("entityType", ""),
-            action=existing.get("action", ""),
-            url=existing.get("url", ""),
-            ms_webhook_id=existing.get("id", ""),
-            ms_href=meta.get("href"),
-            ms_account_id=existing.get("accountId"),
-            enabled=bool(existing.get("enabled", False)),
-        )
-        
+        entity = self._webhook_data_to_entity(existing, enabled_fallback=False)
+
         return WebhookOperationResult(
             operation="already_disabled",
             success=True,

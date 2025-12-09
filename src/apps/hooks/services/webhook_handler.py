@@ -75,12 +75,15 @@ class WebhookHandler:
                 "order_id": order.id,
             }
         
-        except Exception as e:
-            logger.exception("Ошибка при обработке платежа: %s", str(e))
-            return {
-                "success": False,
-                "message": f"Ошибка: {str(e)}",
-            }
+        except PaymentInNotFoundError as exc:
+            logger.warning("Платеж по ссылке %s не найден: %s", event_href, exc)
+            return {"success": False, "message": "Платеж не найден в МойСклад"}
+        except CustomerOrderNotFoundError as exc:
+            logger.warning("Заказ для платежа %s не найден: %s", event_href, exc)
+            return {"success": False, "message": "Заказ для привязки не найден"}
+        except Exception as exc:  # pragma: no cover - защитный блок
+            logger.exception("Ошибка при обработке платежа: %s", str(exc))
+            raise
     
     async def _find_order_for_payment(self, payment, link_type: LinkType):
         """Найти подходящий заказ в зависимости от стратегии."""

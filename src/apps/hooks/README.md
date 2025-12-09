@@ -328,15 +328,23 @@ if not existing:
         webhook_entity=entity
     )
 
-# 3. Уже включен (пропустить)
-if existing.get("enabled") is True:
+# 3. Уже включен и url совпадает (пропустить)
+if existing.get("enabled") is True and existing.get("url") == config.url:
     return WebhookOperationResult(
         operation="already_enabled",
         webhook_entity=entity
     )
 
-# 4. Включить существующий
-updated = await client.update_webhook_enabled(existing, True)
+# 4. Обновить url при расхождении и включить
+if existing.get("url") != config.url:
+    updated = await client.update_webhook(existing, enabled=True, url=config.url)
+    return WebhookOperationResult(
+        operation="url_updated_and_enabled",
+        webhook_entity=entity
+    )
+
+# 5. Включить существующий
+updated = await client.update_webhook(existing, enabled=True)
 return WebhookOperationResult(
     operation="enabled",
     webhook_entity=entity
@@ -606,6 +614,7 @@ class WebhookEntity:
 # Value Object
 @dataclass(frozen=True)
 class WebhookConfiguration:
+    payment_type: PaymentType
     entity_type: str
     action: str
     url: str
@@ -712,8 +721,8 @@ list_webhooks(limit=100) -> list[Dict]
 # Создание вебхука
 create_webhook(entity_type, action, url) -> Dict
 
-# Обновление статуса
-update_webhook_enabled(webhook_data, enabled) -> Dict
+# Обновление параметров (enabled/url)
+update_webhook(webhook_data, enabled=None, url=None) -> Dict
 
 # Поиск вебхука
 find_webhook(entity_type, action, url) -> Optional[Dict]

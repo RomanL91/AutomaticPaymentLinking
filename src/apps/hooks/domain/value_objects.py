@@ -19,6 +19,7 @@ WEBHOOK_ACTION = "CREATE"
 class WebhookConfiguration:
     """Конфигурация вебхука (Value Object)."""
     
+    payment_type: PaymentType
     entity_type: str
     action: str
     url: str
@@ -40,6 +41,7 @@ class WebhookConfiguration:
             Конфигурация вебхука
         """
         return cls(
+            payment_type=payment_type,
             entity_type=PAYMENT_TYPE_TO_ENTITY_TYPE[payment_type],
             action=WEBHOOK_ACTION,
             url=webhook_url,

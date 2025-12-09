@@ -270,17 +270,20 @@ class MoySkladClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    async def update_webhook_enabled(
+    async def update_webhook(
         self,
         webhook_data: Dict[str, Any],
-        enabled: bool,
+        *,
+        enabled: bool | None = None,
+        url: str | None = None,
     ) -> Dict[str, Any]:
         """
-        Обновить статус вебхука (включен/выключен).
+        Обновить параметры вебхука (url и/или статус).
         
         Args:
             webhook_data: Данные вебхука с meta.href
-            enabled: Новый статус
+            enabled: Новый статус (если нужно изменить)
+            url: Новый url (если нужно изменить)
             
         Returns:
             Обновленные данные вебхука
@@ -288,6 +291,9 @@ class MoySkladClient:
         Raises:
             MoySkladAPIError: При ошибке обновления
         """
+        if enabled is None and url is None:
+            raise MoySkladAPIError("Не переданы изменяемые параметры вебхука")
+        
         try:
             headers = self._get_headers()
             meta = webhook_data.get("meta") or {}
@@ -300,14 +306,30 @@ class MoySkladClient:
                 )
             
             webhook_id = webhook_data.get("id")
-            logger.info("Обновление вебхука %s: enabled=%s", webhook_id, enabled)
+            payload: Dict[str, Any] = {}
+            if enabled is not None:
+                payload["enabled"] = enabled
+            if url is not None:
+                payload["url"] = url
+
+            logger.info(
+                "Обновление вебхука %s: enabled=%s url=%s",
+                webhook_id,
+                enabled,
+                url,
+            )
             
             async with httpx.AsyncClient(headers=headers, timeout=self._timeout) as client:
-                resp = await client.put(href, json={"enabled": enabled})
+                resp = await client.put(href, json=payload)
                 resp.raise_for_status()
                 result = resp.json()
                 
-                logger.info("Вебхук обновлен: id=%s, enabled=%s", result.get("id"), enabled)
+                logger.info(
+                    "Вебхук обновлен: id=%s, enabled=%s, url=%s",
+                    result.get("id"),
+                    result.get("enabled"),
+                    result.get("url"),
+                )
                 return result
         except httpx.HTTPStatusError as exc:
             raise MoySkladAPIError(
