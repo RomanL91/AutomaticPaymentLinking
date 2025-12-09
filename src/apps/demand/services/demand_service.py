@@ -24,7 +24,7 @@ class DemandService:
         agent_id: str,
         payment_sum: float,
         search_by_sum: bool = True,
-        priritize_oldest: bool = True,
+        prioritize_oldest: bool = True,
     ) -> List[DemandEntity]:
         """Найти отгрузки для привязки платежа."""
 
@@ -32,13 +32,14 @@ class DemandService:
             demands_data = await self._client.search_by_agent_and_sum(
                 agent_id=agent_id,
                 sum_value=payment_sum,
+                prioritize_oldest=prioritize_oldest,
             )
         else:
             demands_data = await self._client.search_by_agent(
                 agent_id=agent_id,
                 date_from=datetime.now(timezone.utc) - timedelta(days=60),
-                limit=10, # "магические" числа
-                order="moment,asc" if priritize_oldest else "moment,desc"
+                limit=10,
+                order="moment,asc" if prioritize_oldest else "moment,desc"
             )
 
         entities = [self._to_entity(data) for data in demands_data]

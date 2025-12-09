@@ -65,6 +65,7 @@ class CustomerOrderService:
             orders_data = await self._client.search_by_agent_and_sum(
                 agent_id=agent_id,
                 sum_value=payment_sum,
+                prioritize_oldest=prioritize_oldest,
             )
         else:
             orders_data = await self._client.search_by_agent(

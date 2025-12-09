@@ -1,7 +1,7 @@
 """Клиент для работы с API заказов покупателя МойСклад."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -185,6 +185,7 @@ class CustomerOrderClient:
         agent_id: str,
         sum_value: float,
         tolerance: float = 0.01,
+        prioritize_oldest: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Поиск заказов по контрагенту и сумме.
@@ -193,7 +194,8 @@ class CustomerOrderClient:
             agent_id: ID контрагента
             sum_value: Сумма для поиска
             tolerance: Допустимая погрешность суммы
-            
+            prioritize_oldest: Приоритет старых (True) или новых (False) документов
+
         Returns:
             Список заказов
         """
@@ -207,7 +209,8 @@ class CustomerOrderClient:
         ]
         
         filter_str = ";".join(filter_parts)
-        return await self.search(filter_str=filter_str, order="moment,desc")
+        order = "moment,asc" if prioritize_oldest else "moment,desc"
+        return await self.search(filter_str=filter_str, order=order)
     
     async def search_by_agent(
         self,
@@ -234,7 +237,13 @@ class CustomerOrderClient:
         ]
 
         if date_from:
-            filter_parts.append(f"moment>={date_from.isoformat()}")
+            
+            # МойСклад работает в MSK (UTC+3)
+            # Формат: ГГГГ-ММ-ДД ЧЧ:мм:сс (пробел между датой и временем, без T)
+            msk_tz = timezone(timedelta(hours=3))
+            date_msk = date_from.astimezone(msk_tz)
+            # Убираем секунды для совместимости (можно использовать и с секундами)
+            filter_parts.append(f"moment>={date_msk.strftime('%Y-%m-%d %H:%M:%S')}")
 
         filter_str = ";".join(filter_parts)
         return await self.search(filter_str=filter_str, order=order, limit=limit)

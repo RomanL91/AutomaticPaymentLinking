@@ -342,6 +342,7 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             enabled=model.enabled,
             document_type=model.document_type,
             link_type=model.link_type,
+            document_priority=model.document_priority,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -369,4 +370,5 @@ class WebhookRepository(AbstractRepository[WebhookEntity]):
             enabled=entity.enabled,
             document_type=entity.document_type,
             link_type=entity.link_type,
+            document_priority=entity.document_priority,
         )
