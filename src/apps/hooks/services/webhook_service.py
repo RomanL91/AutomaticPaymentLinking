@@ -218,6 +218,7 @@ class WebhookService:
         paymentin_service,
         customerorder_service,
         invoiceout_service,
+        demand_service=None,
     ) -> None:
         """
         Обработать входящий webhook от МойСклад.
@@ -233,11 +234,15 @@ class WebhookService:
         
         if invoiceout_service is None:
             raise ValueError("InvoiceOutService dependency is required")
+        
+        if demand_service is None:
+            raise ValueError("DemandService dependency is required")
 
         handler = WebhookHandler(
             paymentin_service,
             customerorder_service,
             invoiceout_service,
+            demand_service,
         )
         
         for event in payload.events:
